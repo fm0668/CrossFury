@@ -77,7 +77,7 @@ impl ExchangeFees {
 }
 
 /// Common orderbook data structure that works across exchanges
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StandardOrderBook {
     pub symbol: String,
     pub exchange: Exchange,

@@ -11,6 +11,10 @@ pub mod config;  // Added missing config module export
 pub mod error_handling;  // Added missing error_handling module export
 pub mod json_parser;
 
+// 新增重构模块
+pub mod types;  // 新的类型系统
+pub mod connectors;  // 新的连接器系统
+
 
 // Re-export key components for easier usage
 pub use core::*;
