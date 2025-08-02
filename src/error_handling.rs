@@ -65,6 +65,8 @@ impl From<&AppError> for ErrorCategory {
             AppError::MissingPriceData(_) => ErrorCategory::SymbolInvalid,
             AppError::TimeoutError => ErrorCategory::Timeout,
             AppError::ConnectionError(_) => ErrorCategory::ConnectionFailure,
+            AppError::ConfigError(_) => ErrorCategory::InternalFailure,
+            AppError::CryptoError(_) => ErrorCategory::InternalFailure,
             AppError::Other(msg) => {
                 if msg.contains("rate limit") || msg.contains("too many requests") {
                     ErrorCategory::RateLimitExceeded

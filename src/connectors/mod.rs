@@ -8,6 +8,7 @@ pub use traits::*;
 
 // 连接器实现模块
 pub mod lbank;
+pub mod binance;
 // pub mod xtcom;
 // pub mod tapbit;
 // pub mod hbit;

@@ -38,6 +38,9 @@ pub enum ConnectorError {
     ExchangeNotFound(String),
     ServiceUnavailable(String),
     InternalError(String),
+    
+    // 功能相关错误
+    TradingNotImplemented,
 }
 
 impl fmt::Display for ConnectorError {
@@ -62,6 +65,7 @@ impl fmt::Display for ConnectorError {
             ConnectorError::ExchangeNotFound(msg) => write!(f, "Exchange not found: {}", msg),
             ConnectorError::ServiceUnavailable(msg) => write!(f, "Service unavailable: {}", msg),
             ConnectorError::InternalError(msg) => write!(f, "Internal error: {}", msg),
+            ConnectorError::TradingNotImplemented => write!(f, "Trading functionality not implemented"),
         }
     }
 }

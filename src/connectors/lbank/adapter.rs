@@ -12,7 +12,8 @@ use crate::core::AppState;
 use crate::network::lbank_websocket::lbank_websocket_handler;
 use crate::connectors::traits::{ExchangeConnector, DataFlowManager};
 use crate::types::{
-    config::{ConnectorConfig, ConnectionStatus, SubscriptionConfig, DataType},
+    config::{ConnectorConfig, ConnectionStatus, SubscriptionConfig},
+    common::DataType,
     market_data::{StandardizedMessage, StandardizedOrderBook, StandardizedTrade},
     orders::{OrderRequest, OrderResponse, OrderStatus},
     account::{AccountBalance},
@@ -263,7 +264,7 @@ impl LBankConnector {
                     DataType::OrderBook => {
                         self.subscribe_orderbook(symbol).await?;
                     },
-                    DataType::Trades => {
+                    DataType::Trade => {
                         self.subscribe_trades(symbol).await?;
                     },
                     _ => {

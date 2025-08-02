@@ -123,19 +123,9 @@ impl Default for SystemConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubscriptionConfig {
     pub symbols: Vec<String>,
-    pub data_types: Vec<DataType>,
+    pub data_types: Vec<crate::types::common::DataType>,
     pub depth_levels: Option<u32>, // 订单簿深度
     pub update_speed: Option<UpdateSpeed>,
-}
-
-/// 数据类型
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum DataType {
-    OrderBook,
-    Trades,
-    Ticker,
-    Kline,
-    UserData,
 }
 
 /// 更新速度
@@ -145,4 +135,46 @@ pub enum UpdateSpeed {
     Normal,  // 100ms
     Fast,    // 10ms
     Realtime, // 实时
+}
+
+/// 健康状态
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HealthStatus {
+    Healthy,
+    Degraded,
+    Unhealthy,
+}
+
+impl std::fmt::Display for HealthStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            HealthStatus::Healthy => write!(f, "HEALTHY"),
+            HealthStatus::Degraded => write!(f, "DEGRADED"),
+            HealthStatus::Unhealthy => write!(f, "UNHEALTHY"),
+        }
+    }
+}
+
+/// 连接统计信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConnectionStats {
+    pub connected_since: Option<chrono::DateTime<chrono::Utc>>,
+    pub messages_received: u64,
+    pub messages_sent: u64,
+    pub reconnect_count: u32,
+    pub last_ping_time: Option<chrono::DateTime<chrono::Utc>>,
+    pub latency_ms: Option<f64>,
+}
+
+impl Default for ConnectionStats {
+    fn default() -> Self {
+        Self {
+            connected_since: None,
+            messages_received: 0,
+            messages_sent: 0,
+            reconnect_count: 0,
+            last_ping_time: None,
+            latency_ms: None,
+        }
+    }
 }

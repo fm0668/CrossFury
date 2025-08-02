@@ -7,7 +7,10 @@ use trifury::{
         lbank::LBankConnector,
     },
     core::AppState,
-    types::config::{ConnectorConfig, SubscriptionConfig, DataType, UpdateSpeed},
+    types::{
+        config::{ConnectorConfig, SubscriptionConfig, UpdateSpeed},
+        common::DataType,
+    },
 };
 use std::{sync::Arc, time::Duration};
 use tokio::time::{sleep, timeout};
@@ -62,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "ETHUSDT".to_string(),
             "BNBUSDT".to_string(),
         ],
-        data_types: vec![DataType::OrderBook, DataType::Trades],
+        data_types: vec![DataType::OrderBook, DataType::Trade],
         depth_levels: Some(10),
         update_speed: Some(UpdateSpeed::Fast),
     };

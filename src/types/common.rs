@@ -56,7 +56,7 @@ pub enum ConnectionStatus {
 }
 
 /// 数据类型
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum DataType {
     /// 订单簿数据
     OrderBook,

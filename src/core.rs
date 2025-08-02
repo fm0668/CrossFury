@@ -141,6 +141,9 @@ pub struct AppState {
     // Message queue for orderbook updates
     pub orderbook_queue: Option<mpsc::UnboundedSender<OrderbookUpdate>>,
     
+    // Message queue for depth updates
+    pub depth_queue: Option<mpsc::UnboundedSender<crate::types::DepthUpdate>>,
+    
     // Reconnection signals for connections
     pub reconnect_signals: Arc<DashMap<String, bool>>, // Connection ID -> should reconnect flag
 }
@@ -170,6 +173,9 @@ impl AppState {
             
             // Initialize message queue as None (will be set in main)
             orderbook_queue: None,
+            
+            // Initialize depth queue as None (will be set in main)
+            depth_queue: None,
             
             // Initialize reconnection signals
             reconnect_signals: Arc::new(DashMap::new()),
@@ -415,6 +421,12 @@ pub enum AppError {
     
     #[error("Connection error: {0}")]
     ConnectionError(String),
+    
+    #[error("Configuration error: {0}")]
+    ConfigError(String),
+    
+    #[error("Cryptographic error: {0}")]
+    CryptoError(String),
     
     #[error("Other error: {0}")]
     Other(String),

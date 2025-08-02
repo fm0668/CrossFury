@@ -14,6 +14,8 @@ pub enum Exchange {
     Hbit,
     Batonex,
     CoinCatch,
+    // New spot exchanges
+    Binance,
     // New futures exchanges
     BinanceFutures,
     BybitFutures,
@@ -30,6 +32,7 @@ impl fmt::Display for Exchange {
             Exchange::Hbit => write!(f, "HBIT"),
             Exchange::Batonex => write!(f, "BATONEX"),
             Exchange::CoinCatch => write!(f, "COINCATCH"),
+            Exchange::Binance => write!(f, "BINANCE"),
             Exchange::BinanceFutures => write!(f, "BINANCE_FUTURES"),
             Exchange::BybitFutures => write!(f, "BYBIT_FUTURES"),
             Exchange::OkxFutures => write!(f, "OKX_FUTURES"),
@@ -50,6 +53,7 @@ impl FromStr for Exchange {
             "HBIT" => Ok(Exchange::Hbit),
             "BATONEX" => Ok(Exchange::Batonex),
             "COINCATCH" => Ok(Exchange::CoinCatch),
+            "BINANCE" => Ok(Exchange::Binance),
             "BINANCE_FUTURES" => Ok(Exchange::BinanceFutures),
             "BYBIT_FUTURES" => Ok(Exchange::BybitFutures),
             "OKX_FUTURES" => Ok(Exchange::OkxFutures),

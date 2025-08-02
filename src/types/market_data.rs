@@ -103,6 +103,28 @@ pub struct BalanceUpdate {
     pub timestamp: i64,
 }
 
+/// 价格档位数据
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PriceLevel {
+    pub price: f64,
+    pub quantity: f64,
+}
+
+/// 深度更新数据
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DepthUpdate {
+    pub symbol: String,
+    pub first_update_id: i64,
+    pub final_update_id: i64,
+    pub event_time: i64,
+    pub best_bid_price: f64,
+    pub best_ask_price: f64,
+    /// 完整的买单深度数据（按价格从高到低排序）
+    pub depth_bids: Vec<PriceLevel>,
+    /// 完整的卖单深度数据（按价格从低到高排序）
+    pub depth_asks: Vec<PriceLevel>,
+}
+
 /// 高频数据流类型（与重构方案保持一致）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum HighFrequencyData {
@@ -110,6 +132,85 @@ pub enum HighFrequencyData {
     TradeUpdate(StandardizedTrade),
     TickerUpdate(Ticker),
     KlineUpdate(Kline),
+}
+
+/// 交易更新数据
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TradeUpdate {
+    pub symbol: String,
+    pub trade_id: i64,
+    pub price: f64,
+    pub quantity: f64,
+    pub timestamp: i64,
+    pub is_buyer_maker: bool,
+}
+
+/// K线更新数据
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KlineUpdate {
+    pub symbol: String,
+    pub open_time: i64,
+    pub close_time: i64,
+    pub interval: String,
+    pub open_price: f64,
+    pub high_price: f64,
+    pub low_price: f64,
+    pub close_price: f64,
+    pub volume: f64,
+    pub quote_volume: f64,
+    pub is_closed: bool,
+}
+
+/// Ticker更新数据
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TickerUpdate {
+    pub symbol: String,
+    pub price_change: f64,
+    pub price_change_percent: f64,
+    pub last_price: f64,
+    pub volume: f64,
+    pub quote_volume: f64,
+    pub high_price: f64,
+    pub low_price: f64,
+    pub open_price: f64,
+}
+
+/// 标记价格更新数据
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarkPriceUpdate {
+    pub symbol: String,
+    pub mark_price: f64,
+    pub index_price: f64,
+    pub funding_rate: f64,
+    pub next_funding_time: i64,
+}
+
+/// 持仓量更新数据
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenInterestUpdate {
+    pub symbol: String,
+    pub open_interest: f64,
+    pub timestamp: i64,
+}
+
+/// 资金费率更新数据
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FundingRateUpdate {
+    pub symbol: String,
+    pub funding_rate: f64,
+    pub funding_time: i64,
+}
+
+/// 市场数据事件
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MarketDataEvent {
+    DepthUpdate(DepthUpdate),
+    TradeUpdate(TradeUpdate),
+    KlineUpdate(KlineUpdate),
+    TickerUpdate(TickerUpdate),
+    MarkPriceUpdate(MarkPriceUpdate),
+    OpenInterestUpdate(OpenInterestUpdate),
+    FundingRateUpdate(FundingRateUpdate),
 }
 
 /// 系统事件类型（与重构方案保持一致）
