@@ -4,7 +4,7 @@
 
 use crate::core::AppError;
 use crate::connectors::binance::futures::websocket::{FuturesPosition, FuturesBalance};
-use crate::connectors::binance::futures::connector::OrderRequest;
+use crate::types::OrderRequest;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;

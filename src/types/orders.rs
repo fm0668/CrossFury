@@ -12,6 +12,22 @@ pub struct OrderRequest {
     pub side: OrderSide,
     pub order_type: OrderType,
     pub quantity: f64,
+    pub price: Option<f64>,
+    pub time_in_force: Option<TimeInForce>,
+    pub reduce_only: Option<bool>,
+    pub close_position: Option<bool>,
+    pub position_side: Option<PositionSide>,
+    pub client_order_id: Option<String>,
+}
+
+/// 详细订单请求（内部使用）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DetailedOrderRequest {
+    pub symbol: String,
+    pub exchange: ExchangeType,
+    pub side: OrderSide,
+    pub order_type: OrderType,
+    pub quantity: f64,
     pub price: Option<f64>, // 市价单时为None
     pub time_in_force: TimeInForce,
     pub client_order_id: Option<String>,
@@ -27,16 +43,28 @@ pub struct OrderResponse {
     pub order_id: String,
     pub client_order_id: Option<String>,
     pub symbol: String,
-    pub exchange: ExchangeType,
-    pub status: OrderStatus,
+    pub status: String,
     pub filled_quantity: f64,
     pub remaining_quantity: f64,
-    pub timestamp: i64,
+    pub average_price: Option<f64>,
+    pub timestamp: u64,
 }
 
 /// 订单状态
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrderStatus {
+    pub order_id: String,
+    pub symbol: String,
+    pub status: String,
+    pub filled_quantity: f64,
+    pub remaining_quantity: f64,
+    pub average_price: Option<f64>,
+    pub timestamp: u64,
+}
+
+/// 详细订单状态（内部使用）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DetailedOrderStatus {
     pub order_id: String,
     pub client_order_id: Option<String>,
     pub symbol: String,
@@ -59,6 +87,15 @@ pub enum OrderSide {
     Sell,
 }
 
+impl OrderSide {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            OrderSide::Buy => "BUY",
+            OrderSide::Sell => "SELL",
+        }
+    }
+}
+
 /// 订单类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OrderType {
@@ -66,6 +103,17 @@ pub enum OrderType {
     Limit,
     StopMarket,
     StopLimit,
+}
+
+impl OrderType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            OrderType::Market => "MARKET",
+            OrderType::Limit => "LIMIT",
+            OrderType::StopMarket => "STOP_MARKET",
+            OrderType::StopLimit => "STOP",
+        }
+    }
 }
 
 /// 订单状态枚举
@@ -88,9 +136,22 @@ pub enum TimeInForce {
     GTD, // Good Till Date
 }
 
-/// 账户余额
+impl TimeInForce {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TimeInForce::GTC => "GTC",
+            TimeInForce::IOC => "IOC",
+            TimeInForce::FOK => "FOK",
+            TimeInForce::GTD => "GTD",
+        }
+    }
+}
+
+// 注意：AccountBalance 已在 account.rs 中定义，这里不重复定义
+
+/// 详细账户余额（内部使用）
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AccountBalance {
+pub struct DetailedAccountBalance {
     pub exchange: ExchangeType,
     pub balances: HashMap<String, AssetBalance>,
     pub timestamp: i64,
@@ -126,6 +187,16 @@ pub enum PositionSide {
     Long,
     Short,
     Both, // 双向持仓模式
+}
+
+impl PositionSide {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PositionSide::Long => "LONG",
+            PositionSide::Short => "SHORT",
+            PositionSide::Both => "BOTH",
+        }
+    }
 }
 
 /// 订单修改参数

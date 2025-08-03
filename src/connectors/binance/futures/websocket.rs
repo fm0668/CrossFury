@@ -18,9 +18,10 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use log::{info, error, debug};
+use log::{info, error, debug, warn};
 use chrono::{DateTime, Utc};
 use futures_util::{SinkExt, StreamExt, stream::{SplitSink}};
+use std::time::Duration;
 
 /// Binance期货WebSocket处理器
 pub struct BinanceFuturesWebSocketHandler {
@@ -198,7 +199,12 @@ impl BinanceFuturesWebSocketHandler {
         
         info!("正在连接Binance期货WebSocket: {ws_url}");
         
-        let (ws_stream, _) = connect_async(ws_url).await
+        // 使用超时机制连接
+        let (ws_stream, _) = tokio::time::timeout(
+            std::time::Duration::from_secs(15),
+            connect_async(ws_url)
+        ).await
+            .map_err(|_| AppError::WebSocketError("连接超时".to_string()))?
             .map_err(|e| AppError::WebSocketError(format!("连接失败: {e}")))?;
         
         self.ws_stream = Some(ws_stream);
@@ -273,7 +279,13 @@ impl BinanceFuturesWebSocketHandler {
         
         if let Some(ref ws_sink) = self.ws_sink {
             let mut sink = ws_sink.lock().await;
-            sink.send(Message::Text(subscribe_msg.to_string())).await
+            
+            // 使用超时机制发送订阅消息
+            tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                sink.send(Message::Text(subscribe_msg.to_string()))
+            ).await
+                .map_err(|_| AppError::WebSocketError("发送订阅消息超时".to_string()))?
                 .map_err(|e| AppError::WebSocketError(format!("发送订阅消息失败: {e}")))?;
         }
         
@@ -305,7 +317,13 @@ impl BinanceFuturesWebSocketHandler {
         
         if let Some(ref ws_sink) = self.ws_sink {
             let mut sink = ws_sink.lock().await;
-            sink.send(Message::Text(unsubscribe_msg.to_string())).await
+            
+            // 使用超时机制发送取消订阅消息
+            tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                sink.send(Message::Text(unsubscribe_msg.to_string()))
+            ).await
+                .map_err(|_| AppError::WebSocketError("发送取消订阅消息超时".to_string()))?
                 .map_err(|e| AppError::WebSocketError(format!("发送取消订阅消息失败: {e}")))?;
         }
         
@@ -323,14 +341,20 @@ impl BinanceFuturesWebSocketHandler {
     
     /// 断开连接
     pub async fn disconnect(&mut self) -> Result<()> {
+        info!("正在断开Binance期货WebSocket连接...");
+        
+        // 设置连接状态为断开，这会停止心跳任务
+        *self.is_connected.write().await = false;
+        
+        // 等待心跳任务停止
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        
         if let Some(ws_sink) = self.ws_sink.take() {
             let mut sink = ws_sink.lock().await;
             let _ = sink.close().await;
         }
         
         self.ws_stream = None;
-        
-        *self.is_connected.write().await = false;
         self.subscriptions.write().await.clear();
         
         info!("Binance期货WebSocket已断开连接");
@@ -358,6 +382,7 @@ impl BinanceFuturesWebSocketHandler {
         let account_sender = self.account_sender.clone();
         let subscriptions = self.subscriptions.clone();
         let is_connected = self.is_connected.clone();
+        let last_heartbeat = self.last_heartbeat.clone();
         
         let (ws_sink, mut ws_stream) = ws_stream.split();
         let ws_sink = Arc::new(Mutex::new(ws_sink));
@@ -365,12 +390,54 @@ impl BinanceFuturesWebSocketHandler {
         // 将写入端保存到结构体中，以便订阅操作使用
         self.ws_sink = Some(ws_sink.clone());
         
+        // 启动增强心跳任务
+        let ping_sink = ws_sink.clone();
+        let ping_is_connected = is_connected.clone();
+        let ping_last_heartbeat = last_heartbeat.clone();
+        let heartbeat_task = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
+            
+            // 等待连接稳定后再开始发送心跳
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            
+            loop {
+                interval.tick().await;
+                
+                // 检查连接状态
+                if !*ping_is_connected.read().await {
+                    debug!("心跳任务收到停止信号");
+                    break;
+                }
+                
+                debug!("发送期货WebSocket心跳");
+                let mut writer = ping_sink.lock().await;
+                if let Err(e) = writer.send(Message::Ping(vec![])).await {
+                    error!("发送心跳失败: {e}");
+                    break;
+                }
+                
+                // 更新心跳时间
+                *ping_last_heartbeat.write().await = Utc::now();
+            }
+            
+            debug!("期货WebSocket心跳任务结束");
+        });
+        
         tokio::spawn(async move {
             use futures_util::StreamExt;
             
-            while let Some(msg) = ws_stream.next().await {
-                match msg {
-                    Ok(Message::Text(text)) => {
+            let mut consecutive_errors = 0;
+            let mut consecutive_timeouts = 0;
+            
+            loop {
+                match tokio::time::timeout(
+                    std::time::Duration::from_secs(10),
+                    ws_stream.next()
+                ).await {
+                    Ok(Some(Ok(Message::Text(text)))) => {
+                        consecutive_errors = 0;
+                        consecutive_timeouts = 0;
+                        
                         if let Err(e) = Self::process_message(
                             &text,
                             &data_sender,
@@ -381,7 +448,10 @@ impl BinanceFuturesWebSocketHandler {
                             error!("处理WebSocket消息失败: {e:?}");
                         }
                     }
-                    Ok(Message::Ping(payload)) => {
+                    Ok(Some(Ok(Message::Ping(payload)))) => {
+                        consecutive_errors = 0;
+                        consecutive_timeouts = 0;
+                        
                         use futures_util::SinkExt;
                         let mut sink = ws_sink.lock().await;
                         if let Err(e) = sink.send(Message::Pong(payload)).await {
@@ -389,20 +459,83 @@ impl BinanceFuturesWebSocketHandler {
                             break;
                         }
                     }
-                    Ok(Message::Close(_)) => {
+                    Ok(Some(Ok(Message::Pong(_)))) => {
+                        consecutive_errors = 0;
+                        consecutive_timeouts = 0;
+                        debug!("收到Pong响应");
+                    }
+                    Ok(Some(Ok(Message::Close(_)))) => {
                         info!("WebSocket连接已关闭");
                         break;
                     }
-                    Err(e) => {
-                        error!("WebSocket错误: {e:?}");
+                    Ok(Some(Ok(Message::Binary(_)))) => {
+                        consecutive_errors = 0;
+                        consecutive_timeouts = 0;
+                        debug!("收到二进制消息，忽略");
+                    }
+                    Ok(Some(Ok(Message::Frame(_)))) => {
+                        consecutive_errors = 0;
+                        consecutive_timeouts = 0;
+                        debug!("收到Frame消息，忽略");
+                    }
+                    Ok(Some(Err(e))) => {
+                        consecutive_errors += 1;
+                        
+                        // 根据错误类型进行不同处理
+                        match &e {
+                            tokio_tungstenite::tungstenite::Error::ConnectionClosed => {
+                                error!("连接已关闭");
+                                break;
+                            }
+                            tokio_tungstenite::tungstenite::Error::AlreadyClosed => {
+                                error!("连接已经关闭");
+                                break;
+                            }
+                            tokio_tungstenite::tungstenite::Error::Protocol(_) => {
+                                error!("协议错误: {e}");
+                                if consecutive_errors >= 2 {
+                                    error!("多次协议错误，断开连接");
+                                    break;
+                                }
+                            }
+                            _ => {
+                                error!("WebSocket错误: {e:?}");
+                                if consecutive_errors >= 3 {
+                                    error!("连续错误过多，断开连接");
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    Ok(None) => {
+                        info!("WebSocket流结束");
                         break;
                     }
-                    _ => {}
+                    Err(_) => {
+                        consecutive_timeouts += 1;
+                        warn!("读取超时 ({consecutive_timeouts})");
+                        
+                        // 紧急ping策略
+                        if consecutive_timeouts == 1 {
+                            warn!("发送紧急ping以保持连接");
+                            let mut writer = ws_sink.lock().await;
+                            if let Err(e) = writer.send(Message::Ping(vec![])).await {
+                                error!("发送紧急ping失败: {e}");
+                                break;
+                            }
+                        } else if consecutive_timeouts >= 2 {
+                            error!("连续超时过多，断开连接");
+                            break;
+                        }
+                    }
                 }
             }
             
+            // 停止心跳任务
+            heartbeat_task.abort();
+            
             *is_connected.write().await = false;
-            info!("WebSocket消息处理循环已退出");
+            info!("期货WebSocket消息处理循环已退出");
         });
         
         Ok(())

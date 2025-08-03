@@ -240,8 +240,11 @@ async fn demo_trading_features(adapter: &BinanceAdapter) {
         order_type: OrderType::Limit,
         quantity: 0.001,
         price: Some(30000.0),
-        time_in_force: TimeInForce::GTC,
+        time_in_force: Some(TimeInForce::GTC),
         client_order_id: Some("demo_order_001".to_string()),
+        reduce_only: None,
+        close_position: None,
+        position_side: None,
     };
     
     println!("📝 测试下单功能...");

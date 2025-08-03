@@ -49,7 +49,7 @@ mod tests {
         let config = create_test_config();
         let app_state = AppState::new();
         
-        let connector = LBankConnector::new(config, Arc::new(app_state));
+        let mut connector = LBankConnector::new(config, Arc::new(app_state));
         
         // 验证连接器创建成功
         let status = connector.get_connection_status();
@@ -65,7 +65,7 @@ mod tests {
         let config = create_test_config();
         let app_state = AppState::new();
         
-        let mut connector = LBankConnector::new(config, Arc::new(app_state));
+        let connector = LBankConnector::new(config, Arc::new(app_state));
         
         // 测试连接
         let result = connector.connect_websocket().await;
@@ -85,7 +85,7 @@ mod tests {
         let config = create_test_config();
         let app_state = AppState::new();
         
-        let mut connector = LBankConnector::new(config, Arc::new(app_state));
+        let connector = LBankConnector::new(config, Arc::new(app_state));
         
         // 先连接
         let _ = connector.connect_websocket().await;
@@ -187,7 +187,7 @@ mod tests {
             order_type: OrderType::Limit,
             quantity: 0.001,
             price: Some(50000.0),
-            time_in_force: TimeInForce::GTC,
+            time_in_force: Some(TimeInForce::GTC),
             client_order_id: Some("test_order".to_string()),
             reduce_only: Some(false),
             close_position: Some(false),

@@ -19,7 +19,7 @@ pub use connector::BinanceFuturesConnector;
 pub use websocket::BinanceFuturesWebSocketHandler;
 pub use rest_api::BinanceFuturesRestClient;
 pub use message_parser::BinanceFuturesMessageParser;
-pub use config::BinanceFuturesConfig;
+pub use config::{BinanceFuturesConfig, BinanceFuturesConfigBuilder, MarginType, PositionMode, PositionSide, FuturesOrderType, TimeInForce};
 pub use risk_manager::RiskManager;
 pub use cache::MarketDataCache;
 pub use performance_monitor::PerformanceMonitor;

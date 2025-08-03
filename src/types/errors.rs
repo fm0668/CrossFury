@@ -7,6 +7,7 @@ use std::fmt;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ConnectorError {
     // 连接相关错误
+    ConnectionError(String),
     ConnectionFailed(String),
     ConnectionLost(String),
     WebSocketError(String),
@@ -16,10 +17,12 @@ pub enum ConnectorError {
     InvalidCredentials(String),
     
     // 订阅相关错误
+    SubscriptionError(String),
     SubscriptionFailed(String),
     InvalidSymbol(String),
     
     // 交易相关错误
+    TradingError(String),
     OrderPlacementFailed(String),
     OrderCancellationFailed(String),
     InsufficientBalance(String),
@@ -46,13 +49,16 @@ pub enum ConnectorError {
 impl fmt::Display for ConnectorError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            ConnectorError::ConnectionError(msg) => write!(f, "Connection error: {msg}"),
             ConnectorError::ConnectionFailed(msg) => write!(f, "Connection failed: {msg}"),
             ConnectorError::ConnectionLost(msg) => write!(f, "Connection lost: {msg}"),
             ConnectorError::WebSocketError(msg) => write!(f, "WebSocket error: {msg}"),
             ConnectorError::AuthenticationFailed(msg) => write!(f, "Authentication failed: {msg}"),
             ConnectorError::InvalidCredentials(msg) => write!(f, "Invalid credentials: {msg}"),
+            ConnectorError::SubscriptionError(msg) => write!(f, "Subscription error: {msg}"),
             ConnectorError::SubscriptionFailed(msg) => write!(f, "Subscription failed: {msg}"),
             ConnectorError::InvalidSymbol(msg) => write!(f, "Invalid symbol: {msg}"),
+            ConnectorError::TradingError(msg) => write!(f, "Trading error: {msg}"),
             ConnectorError::OrderPlacementFailed(msg) => write!(f, "Order placement failed: {msg}"),
             ConnectorError::OrderCancellationFailed(msg) => write!(f, "Order cancellation failed: {msg}"),
             ConnectorError::InsufficientBalance(msg) => write!(f, "Insufficient balance: {msg}"),

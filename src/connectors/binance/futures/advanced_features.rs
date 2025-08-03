@@ -2,8 +2,8 @@
 //! 
 //! 实现算法交易、智能路由、高级订单类型等功能
 
-use crate::types::trading::{OrderStatus, OrderSide};
-use crate::types::orders::{OrderRequest, OrderType, TimeInForce};
+use crate::types::trading::{OrderStatus};
+use crate::types::orders::{OrderRequest, OrderSide, OrderType, TimeInForce, PositionSide};
 use crate::types::market_data::{DepthUpdate, Ticker};
 use crate::types::exchange::ExchangeType;
 use std::collections::HashMap;
@@ -389,18 +389,15 @@ impl AlgoTradingEngine {
             let child_order = OrderRequest {
                  symbol: symbol.clone(),
                  exchange: ExchangeType::BinanceFutures,
-                 side: match side {
-                     OrderSide::Buy => crate::types::orders::OrderSide::Buy,
-                     OrderSide::Sell => crate::types::orders::OrderSide::Sell,
-                 },
-                 order_type: if limit_price.is_some() { crate::types::orders::OrderType::Limit } else { crate::types::orders::OrderType::Market },
+                 side: side,
+                 order_type: if limit_price.is_some() { OrderType::Limit } else { OrderType::Market },
                  quantity: slice_quantity,
                  price: limit_price,
-                 time_in_force: crate::types::orders::TimeInForce::IOC,
+                 time_in_force: Some(TimeInForce::IOC),
                  client_order_id: None,
                  reduce_only: Some(false),
                  close_position: Some(false),
-                 position_side: Some(crate::types::orders::PositionSide::Both),
+                 position_side: Some(PositionSide::Both),
              };
             
             match self.order_executor.submit_order(child_order).await {
@@ -492,18 +489,15 @@ impl AlgoTradingEngine {
             let child_order = OrderRequest {
                  symbol: symbol.clone(),
                  exchange: ExchangeType::BinanceFutures,
-                 side: match side {
-                     OrderSide::Buy => crate::types::orders::OrderSide::Buy,
-                     OrderSide::Sell => crate::types::orders::OrderSide::Sell,
-                 },
-                 order_type: if limit_price.is_some() { crate::types::orders::OrderType::Limit } else { crate::types::orders::OrderType::Market },
+                 side: side,
+                 order_type: if limit_price.is_some() { OrderType::Limit } else { OrderType::Market },
                  quantity: current_slice,
                  price: limit_price,
-                 time_in_force: crate::types::orders::TimeInForce::GTC,
+                 time_in_force: Some(TimeInForce::GTC),
                  client_order_id: None,
                  reduce_only: Some(false),
                  close_position: Some(false),
-                 position_side: Some(crate::types::orders::PositionSide::Both),
+                 position_side: Some(PositionSide::Both),
              };
             
             match self.order_executor.submit_order(child_order).await {
@@ -637,18 +631,15 @@ impl AlgoTradingEngine {
         let stop_order = OrderRequest {
              symbol: symbol.clone(),
              exchange: ExchangeType::BinanceFutures,
-             side: match side {
-                 OrderSide::Buy => crate::types::orders::OrderSide::Buy,
-                 OrderSide::Sell => crate::types::orders::OrderSide::Sell,
-             },
-             order_type: crate::types::orders::OrderType::Market,
+             side: side,
+             order_type: OrderType::Market,
              quantity: total_quantity,
              price: None,
-             time_in_force: crate::types::orders::TimeInForce::IOC,
+             time_in_force: Some(TimeInForce::IOC),
              client_order_id: None,
              reduce_only: Some(false),
              close_position: Some(false),
-             position_side: Some(crate::types::orders::PositionSide::Both),
+             position_side: Some(PositionSide::Both),
          };
         
         match self.order_executor.submit_order(stop_order).await {
@@ -737,18 +728,15 @@ impl AlgoTradingEngine {
         let triggered_order = OrderRequest {
              symbol: symbol.clone(),
              exchange: ExchangeType::BinanceFutures,
-             side: match side {
-                 OrderSide::Buy => crate::types::orders::OrderSide::Buy,
-                 OrderSide::Sell => crate::types::orders::OrderSide::Sell,
-             },
-             order_type: if limit_price.is_some() { crate::types::orders::OrderType::Limit } else { crate::types::orders::OrderType::Market },
+             side: side,
+             order_type: if limit_price.is_some() { OrderType::Limit } else { OrderType::Market },
              quantity: total_quantity,
              price: limit_price,
-             time_in_force: crate::types::orders::TimeInForce::GTC,
+             time_in_force: Some(TimeInForce::GTC),
              client_order_id: None,
              reduce_only: Some(false),
              close_position: Some(false),
-             position_side: Some(crate::types::orders::PositionSide::Both),
+             position_side: Some(PositionSide::Both),
          };
         
         match self.order_executor.submit_order(triggered_order).await {
@@ -986,15 +974,15 @@ mod tests {
         let order = OrderRequest {
              symbol: "BTCUSDT".to_string(),
              exchange: ExchangeType::BinanceFutures,
-             side: crate::types::orders::OrderSide::Buy,
-             order_type: crate::types::orders::OrderType::Market,
+             side: OrderSide::Buy,
+             order_type: OrderType::Market,
              quantity: 1.0,
              price: Some(50000.0),
-             time_in_force: TimeInForce::GTC,
+             time_in_force: Some(TimeInForce::GTC),
              client_order_id: None,
              reduce_only: Some(false),
              close_position: Some(false),
-             position_side: Some(crate::types::orders::PositionSide::Both),
+             position_side: Some(PositionSide::Both),
          };
         
         let result = router.route_order(order).await;

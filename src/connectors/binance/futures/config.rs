@@ -120,6 +120,13 @@ impl Default for BinanceFuturesConfig {
     }
 }
 
+impl BinanceFuturesConfig {
+    /// 创建配置构建器
+    pub fn builder() -> BinanceFuturesConfigBuilder {
+        BinanceFuturesConfigBuilder::new()
+    }
+}
+
 impl MarginType {
     /// 转换为API字符串
     pub fn to_api_string(&self) -> &'static str {
@@ -234,6 +241,11 @@ impl BinanceFuturesConfigBuilder {
     
     pub fn subscribe_symbol(mut self, symbol: String) -> Self {
         self.config.subscribed_symbols.push(symbol);
+        self
+    }
+    
+    pub fn subscribed_symbols(mut self, symbols: Vec<String>) -> Self {
+        self.config.subscribed_symbols = symbols;
         self
     }
     

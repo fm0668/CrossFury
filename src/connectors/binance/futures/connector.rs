@@ -10,6 +10,15 @@ use crate::types::market_data::*;
 use crate::types::trading::{*, TimeInForce as TradingTimeInForce, PositionSide as TradingPositionSide};
 use crate::core::AppError;
 
+// 导入核心Trait和标准化类型
+use crate::connectors::traits::ExchangeConnector;
+use crate::types::{
+    ExchangeType, MarketType, StandardizedMessage, StandardizedOrderBook, 
+    StandardizedTrade, OrderRequest, OrderResponse, 
+    OrderStatus, AccountBalance, ConnectorError, ConnectionStatus
+};
+use async_trait::async_trait;
+
 // 定义Result类型别名
 pub type Result<T> = std::result::Result<T, AppError>;
 
@@ -47,6 +56,20 @@ pub struct BinanceFuturesConnector {
     last_heartbeat: Arc<RwLock<DateTime<Utc>>>,
     /// 重连计数
     reconnect_count: Arc<RwLock<u32>>,
+    
+    // ExchangeConnector trait 所需的数据流
+    /// 标准化市场数据流发送端
+    standardized_market_sender: Option<mpsc::UnboundedSender<StandardizedMessage>>,
+    /// 标准化市场数据流接收端
+    standardized_market_receiver: Option<mpsc::UnboundedReceiver<StandardizedMessage>>,
+    /// 标准化用户数据流发送端
+    standardized_user_sender: Option<mpsc::UnboundedSender<StandardizedMessage>>,
+    /// 标准化用户数据流接收端
+    standardized_user_receiver: Option<mpsc::UnboundedReceiver<StandardizedMessage>>,
+    /// 本地订单簿缓存
+    orderbook_cache: Arc<RwLock<HashMap<String, StandardizedOrderBook>>>,
+    /// 本地交易数据缓存
+    trades_cache: Arc<RwLock<HashMap<String, Vec<StandardizedTrade>>>>,
 }
 
 /// 连接状态
@@ -93,6 +116,10 @@ impl BinanceFuturesConnector {
         let rest_client = BinanceFuturesRestClient::new(config.clone());
         let message_parser = BinanceFuturesMessageParser;
         
+        // 创建标准化数据流通道
+        let (market_tx, market_rx) = mpsc::unbounded_channel::<StandardizedMessage>();
+        let (user_tx, user_rx) = mpsc::unbounded_channel::<StandardizedMessage>();
+        
         Self {
             config,
             ws_handler,
@@ -106,6 +133,12 @@ impl BinanceFuturesConnector {
             listen_key: Arc::new(RwLock::new(None)),
             last_heartbeat: Arc::new(RwLock::new(Utc::now())),
             reconnect_count: Arc::new(RwLock::new(0)),
+            standardized_market_sender: Some(market_tx),
+            standardized_market_receiver: Some(market_rx),
+            standardized_user_sender: Some(user_tx),
+            standardized_user_receiver: Some(user_rx),
+            orderbook_cache: Arc::new(RwLock::new(HashMap::new())),
+            trades_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
     
@@ -195,8 +228,8 @@ impl BinanceFuturesConnector {
         Ok(())
     }
     
-    /// 检查连接状态
-    pub async fn is_connected(&self) -> bool {
+    /// 检查连接状态（异步版本）
+    pub async fn is_connected_async(&self) -> bool {
         matches!(*self.connection_state.read().await, ConnectionState::Connected)
     }
     
@@ -279,7 +312,7 @@ impl BinanceFuturesConnector {
     /// 健康检查
     pub async fn health_check(&self) -> bool {
         // 检查连接状态
-        if !self.is_connected().await {
+        if !self.is_connected_async().await {
             return false;
         }
         
@@ -366,7 +399,7 @@ impl BinanceFuturesConnector {
     }
     
     /// 下单
-    pub async fn place_order(&self, request: &OrderRequest) -> Result<Value> {
+    pub async fn place_order(&self, request: &LocalOrderRequest) -> Result<Value> {
         // 转换为 REST API 所需的类型
          let rest_request = crate::connectors::binance::futures::rest_api::OrderRequest {
              symbol: request.symbol.clone(),
@@ -399,14 +432,13 @@ impl BinanceFuturesConnector {
                  "BOTH" => TradingPositionSide::Both,
                  _ => TradingPositionSide::Both,
              }),
-             stop_price: request.stop_price,
              close_position: request.close_position,
              activation_price: None,
              callback_rate: None,
              working_type: None,
              price_protect: None,
              reduce_only: request.reduce_only,
-             new_client_order_id: request.new_client_order_id.clone(),
+             client_order_id: request.client_order_id.clone(), // 修正字段名
          };
         self.rest_client.place_order(&rest_request).await
     }
@@ -442,18 +474,288 @@ impl BinanceFuturesConnector {
     }
 }
 
-/// 订单请求结构体
+/// 本地订单请求结构体
 #[derive(Debug, Clone)]
-pub struct OrderRequest {
+pub struct LocalOrderRequest {
     pub symbol: String,
     pub side: String,
     pub order_type: String,
     pub quantity: f64,
     pub price: Option<f64>,
-    pub stop_price: Option<f64>,
     pub time_in_force: Option<String>,
     pub reduce_only: Option<bool>,
     pub close_position: Option<bool>,
     pub position_side: Option<String>,
-    pub new_client_order_id: Option<String>,
+    pub client_order_id: Option<String>,
+}
+
+// 实现 ExchangeConnector trait
+#[async_trait]
+impl ExchangeConnector for BinanceFuturesConnector {
+    // 基础信息
+    fn get_exchange_type(&self) -> ExchangeType {
+        ExchangeType::Binance
+    }
+    
+    fn get_market_type(&self) -> MarketType {
+        MarketType::Futures
+    }
+    
+    fn get_exchange_name(&self) -> &str {
+        "Binance Futures"
+    }
+    
+    // WebSocket 连接管理
+    async fn connect_websocket(&self) -> std::result::Result<(), ConnectorError> {
+        // 由于trait要求&self，但ws_handler需要&mut，这里需要使用内部可变性
+        // 暂时返回未实现错误，需要重构ws_handler使用内部可变性
+        Err(ConnectorError::ConnectionError("WebSocket连接需要重构以支持内部可变性".to_string()))
+    }
+    
+    async fn disconnect_websocket(&self) -> std::result::Result<(), ConnectorError> {
+        // 由于trait要求&self，但ws_handler需要&mut，这里需要使用内部可变性
+        // 暂时返回未实现错误，需要重构ws_handler使用内部可变性
+        Err(ConnectorError::ConnectionError("WebSocket断开需要重构以支持内部可变性".to_string()))
+    }
+    
+    async fn subscribe_orderbook(&self, symbol: &str) -> std::result::Result<(), ConnectorError> {
+        // 由于trait要求&self，但ws_handler需要&mut，这里需要使用内部可变性
+        // 暂时返回未实现错误，需要重构ws_handler使用内部可变性
+        Err(ConnectorError::SubscriptionError("订阅功能需要重构以支持内部可变性".to_string()))
+    }
+    
+    async fn subscribe_trades(&self, symbol: &str) -> std::result::Result<(), ConnectorError> {
+        // 由于trait要求&self，但ws_handler需要&mut，这里需要使用内部可变性
+        // 暂时返回未实现错误，需要重构ws_handler使用内部可变性
+        Err(ConnectorError::SubscriptionError("订阅功能需要重构以支持内部可变性".to_string()))
+    }
+    
+    async fn subscribe_user_stream(&self) -> std::result::Result<(), ConnectorError> {
+        // 启动用户数据流
+        match self.start_user_data_stream().await {
+            Ok(listen_key) => {
+                *self.listen_key.write().await = Some(listen_key);
+                Ok(())
+            }
+            Err(e) => Err(ConnectorError::SubscriptionError(format!("用户数据流订阅失败: {}", e)))
+        }
+    }
+    
+    // 推送式数据流接口 - 暂时使用空实现，避免panic
+    fn get_market_data_stream(&self) -> mpsc::UnboundedReceiver<StandardizedMessage> {
+        // 创建一个新的通道并返回接收端
+        let (_tx, rx) = mpsc::unbounded_channel();
+        rx
+    }
+    
+    fn get_user_data_stream(&self) -> mpsc::UnboundedReceiver<StandardizedMessage> {
+        // 创建一个新的通道并返回接收端
+        let (_tx, rx) = mpsc::unbounded_channel();
+        rx
+    }
+    
+    // 本地缓存快照读取
+    fn get_orderbook_snapshot(&self, symbol: &str) -> Option<StandardizedOrderBook> {
+        // 使用try_read避免阻塞
+        if let Ok(cache) = self.orderbook_cache.try_read() {
+            cache.get(symbol).cloned()
+        } else {
+            None
+        }
+    }
+    
+    fn get_recent_trades_snapshot(&self, symbol: &str, limit: usize) -> Vec<StandardizedTrade> {
+        // 使用try_read避免阻塞
+        if let Ok(cache) = self.trades_cache.try_read() {
+            if let Some(trades) = cache.get(symbol) {
+                trades.iter().rev().take(limit).cloned().collect()
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        }
+    }
+    
+    // 交易相关操作 (REST API)
+    async fn place_order(&self, order: &OrderRequest) -> std::result::Result<OrderResponse, ConnectorError> {
+        // 转换订单请求格式
+        let local_order = LocalOrderRequest {
+            symbol: order.symbol.clone(),
+            side: order.side.as_str().to_string(),
+            order_type: order.order_type.as_str().to_string(),
+            quantity: order.quantity,
+            price: order.price,
+            time_in_force: order.time_in_force.as_ref().map(|t| t.as_str().to_string()),
+            reduce_only: order.reduce_only,
+            close_position: order.close_position,
+            position_side: order.position_side.as_ref().map(|p| p.as_str().to_string()),
+            client_order_id: order.client_order_id.clone(),
+        };
+        
+        // 调用REST客户端下单方法
+        match self.rest_client.new_order(
+            &local_order.symbol,
+            &local_order.side,
+            &local_order.order_type,
+            local_order.quantity,
+            local_order.price,
+            local_order.time_in_force.as_deref(),
+            local_order.reduce_only,
+            local_order.close_position,
+            local_order.position_side.as_deref(),
+            local_order.client_order_id.as_deref(),
+        ).await {
+            Ok(response) => {
+                // 解析响应并转换为标准格式
+                let order_id = response.get("orderId")
+                    .and_then(|v| v.as_u64())
+                    .map(|id| id.to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
+                
+                let status = response.get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("NEW")
+                    .to_string();
+                
+                let filled_qty = response.get("executedQty")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse::<f64>().ok())
+                    .unwrap_or(0.0);
+                
+                Ok(OrderResponse {
+                    order_id,
+                    client_order_id: order.client_order_id.clone(),
+                    symbol: order.symbol.clone(),
+                    status,
+                    filled_quantity: filled_qty,
+                    remaining_quantity: order.quantity - filled_qty,
+                    average_price: response.get("avgPrice")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| s.parse::<f64>().ok()),
+                    timestamp: response.get("updateTime")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or_else(|| chrono::Utc::now().timestamp_millis() as u64),
+                })
+            }
+            Err(e) => Err(ConnectorError::TradingError(format!("下单失败: {}", e)))
+        }
+    }
+    
+    async fn cancel_order(&self, order_id: &str, symbol: &str) -> std::result::Result<bool, ConnectorError> {
+        match self.rest_client.cancel_order(symbol, Some(order_id.parse().unwrap_or(0)), None).await {
+            Ok(_) => Ok(true),
+            Err(e) => Err(ConnectorError::TradingError(format!("取消订单失败: {}", e)))
+        }
+    }
+    
+    async fn get_order_status(&self, order_id: &str, symbol: &str) -> std::result::Result<OrderStatus, ConnectorError> {
+        match self.rest_client.query_order(symbol, Some(order_id.parse().unwrap_or(0)), None).await {
+            Ok(response) => {
+                // 解析响应并转换为标准格式
+                let status = response.get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("UNKNOWN")
+                    .to_string();
+                
+                let filled_qty = response.get("executedQty")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse::<f64>().ok())
+                    .unwrap_or(0.0);
+                
+                let orig_qty = response.get("origQty")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse::<f64>().ok())
+                    .unwrap_or(0.0);
+                
+                Ok(OrderStatus {
+                    order_id: order_id.to_string(),
+                    symbol: symbol.to_string(),
+                    status,
+                    filled_quantity: filled_qty,
+                    remaining_quantity: orig_qty - filled_qty,
+                    average_price: response.get("avgPrice")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| s.parse::<f64>().ok()),
+                    timestamp: response.get("updateTime")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or_else(|| chrono::Utc::now().timestamp_millis() as u64),
+                })
+            }
+            Err(e) => Err(ConnectorError::TradingError(format!("查询订单状态失败: {}", e)))
+        }
+    }
+    
+    async fn get_account_balance(&self) -> std::result::Result<AccountBalance, ConnectorError> {
+        match self.rest_client.get_account_info().await {
+            Ok(response) => {
+                // 解析响应并转换为标准格式
+                let mut total_balance = 0.0;
+                let mut available_balance = 0.0;
+                
+                // 查找USDT资产
+                if let Some(assets) = response.get("assets").and_then(|v| v.as_array()) {
+                    for asset in assets {
+                        if let Some(asset_name) = asset.get("asset").and_then(|v| v.as_str()) {
+                            if asset_name == "USDT" {
+                                total_balance = asset.get("walletBalance")
+                                    .and_then(|v| v.as_str())
+                                    .and_then(|s| s.parse::<f64>().ok())
+                                    .unwrap_or(0.0);
+                                
+                                available_balance = asset.get("availableBalance")
+                                    .and_then(|v| v.as_str())
+                                    .and_then(|s| s.parse::<f64>().ok())
+                                    .unwrap_or(0.0);
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                Ok(AccountBalance {
+                    total: total_balance,
+                    available: available_balance,
+                    frozen: total_balance - available_balance,
+                    balances: std::collections::HashMap::new(), // 空的详细余额映射
+                })
+            }
+            Err(e) => Err(ConnectorError::TradingError(format!("获取账户余额失败: {}", e)))
+        }
+    }
+    
+    // 连接状态
+    fn is_connected(&self) -> bool {
+        // 使用try_read避免阻塞
+        if let Ok(state) = self.connection_state.try_read() {
+            matches!(*state, ConnectionState::Connected)
+        } else {
+            false
+        }
+    }
+    
+    fn is_websocket_connected(&self) -> bool {
+        // 由于ws_handler.is_connected()是异步方法，这里只检查连接器状态
+        // 完整的WebSocket状态检查需要异步方法
+        // 使用try_read避免阻塞
+        if let Ok(state) = self.connection_state.try_read() {
+            matches!(*state, ConnectionState::Connected)
+        } else {
+            false
+        }
+    }
+    
+    fn get_connection_status(&self) -> ConnectionStatus {
+        if let Ok(state) = self.connection_state.try_read() {
+            match &*state {
+                ConnectionState::Connected => ConnectionStatus::Connected,
+                ConnectionState::Connecting => ConnectionStatus::Connecting,
+                ConnectionState::Reconnecting => ConnectionStatus::Reconnecting,
+                ConnectionState::Disconnected => ConnectionStatus::Disconnected,
+                ConnectionState::Error(_) => ConnectionStatus::Error,
+            }
+        } else {
+            ConnectionStatus::Disconnected
+        }
+    }
 }

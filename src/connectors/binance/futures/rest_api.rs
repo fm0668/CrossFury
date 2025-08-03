@@ -47,13 +47,12 @@ pub struct OrderRequest {
     pub price: Option<f64>,
     pub time_in_force: Option<TradingTimeInForce>,
     pub position_side: Option<TradingPositionSide>,
-    pub stop_price: Option<f64>,
     pub close_position: Option<bool>,
     pub activation_price: Option<f64>,
     pub callback_rate: Option<f64>,
     pub working_type: Option<String>,
     pub price_protect: Option<bool>,
-    pub new_client_order_id: Option<String>,
+    pub client_order_id: Option<String>,
     pub reduce_only: Option<bool>,
 }
 
@@ -307,10 +306,6 @@ impl BinanceFuturesRestClient {
             params.push(("positionSide", position_side.to_api_string().to_string()));
         }
         
-        if let Some(stop_price) = request.stop_price {
-            params.push(("stopPrice", stop_price.to_string()));
-        }
-        
         if let Some(close_position) = request.close_position {
             params.push(("closePosition", close_position.to_string()));
         }
@@ -319,8 +314,8 @@ impl BinanceFuturesRestClient {
             params.push(("reduceOnly", reduce_only.to_string()));
         }
         
-        if let Some(new_client_order_id) = &request.new_client_order_id {
-            params.push(("newClientOrderId", new_client_order_id.clone()));
+        if let Some(client_order_id) = &request.client_order_id {
+            params.push(("newClientOrderId", client_order_id.clone()));
         }
         
         let query_string = self.build_query_string(&params);
@@ -494,6 +489,64 @@ impl BinanceFuturesRestClient {
         let _response = self.send_signed_request(Method::DELETE, &url, Some(body)).await?;
         
         Ok(())
+    }
+    
+    /// 下单 (new_order方法，兼容connector.rs的调用)
+    pub async fn new_order(
+        &self,
+        symbol: &str,
+        side: &str,
+        order_type: &str,
+        quantity: f64,
+        price: Option<f64>,
+        time_in_force: Option<&str>,
+        reduce_only: Option<bool>,
+        close_position: Option<bool>,
+        position_side: Option<&str>,
+        client_order_id: Option<&str>,
+    ) -> Result<Value> {
+        // 构建OrderRequest并调用place_order
+        let order_request = OrderRequest {
+            symbol: symbol.to_string(),
+            side: match side {
+                "BUY" => OrderSide::Buy,
+                "SELL" => OrderSide::Sell,
+                _ => return Err(AppError::ParseError("Invalid order side".to_string())),
+            },
+            order_type: match order_type {
+                "MARKET" => OrderType::Market,
+                "LIMIT" => OrderType::Limit,
+                "STOP" => OrderType::Stop,
+                "STOP_MARKET" => OrderType::StopMarket,
+                "TAKE_PROFIT" => OrderType::TakeProfit,
+                "TAKE_PROFIT_MARKET" => OrderType::TakeProfitMarket,
+                _ => return Err(AppError::ParseError("Invalid order type".to_string())),
+            },
+            quantity,
+            price,
+            time_in_force: time_in_force.map(|tif| match tif {
+                "GTC" => TradingTimeInForce::GTC,
+                "IOC" => TradingTimeInForce::IOC,
+                "FOK" => TradingTimeInForce::FOK,
+                "GTX" => TradingTimeInForce::GTX,
+                _ => TradingTimeInForce::GTC,
+            }),
+            position_side: position_side.map(|ps| match ps {
+                "BOTH" => TradingPositionSide::Both,
+                "LONG" => TradingPositionSide::Long,
+                "SHORT" => TradingPositionSide::Short,
+                _ => TradingPositionSide::Both,
+            }),
+            reduce_only,
+            close_position,
+            activation_price: None,
+            callback_rate: None,
+            working_type: None,
+            price_protect: None,
+            client_order_id: client_order_id.map(|s| s.to_string()),
+        };
+        
+        self.place_order(&order_request).await
     }
     
     /// 发送签名请求

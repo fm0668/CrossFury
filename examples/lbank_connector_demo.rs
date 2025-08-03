@@ -167,8 +167,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         order_type: OrderType::Market,
         quantity: 0.001,
         price: None,
-        time_in_force: TimeInForce::IOC,
+        time_in_force: Some(TimeInForce::IOC),
         client_order_id: Some("demo_order".to_string()),
+        reduce_only: Some(false),
+        close_position: Some(false),
+        position_side: Some(trifury::types::orders::PositionSide::Both),
     };
     
     match connector.place_order(&test_order).await {

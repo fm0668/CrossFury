@@ -21,24 +21,13 @@ use trifury::json_parser::init_simd_json;
 // Import required components from our crate
 use trifury::{
     AppState, OrderbookUpdate,
-    get_perpetual_products,
-    distribute_symbols, websocket_handler,
-    lbank_websocket_handler, xtcom_websocket_handler,
-    tapbit_websocket_handler, hbit_websocket_handler,
-    batonex_websocket_handler,
-    coincatch_websocket_handler,
-    run_connection_health_manager,
     run_clean_metrics_display,
-
     flush_cross_ex_buffer,
-
 };
-use trifury::network::{
-    binance_futures_websocket::binance_futures_websocket_handler,
-    bybit_futures_websocket::bybit_futures_websocket_handler,
-    okx_futures_websocket::okx_futures_websocket_handler,
-    api_client::get_futures_symbols,
-};
+// 注意：原 network 模块已移除，期货 WebSocket 处理器将在重构完成后提供
+// use trifury::connectors::binance::futures::BinanceFuturesConnector;
+// use trifury::connectors::bybit::futures::BybitFuturesConnector;
+// use trifury::connectors::okx::futures::OkxFuturesConnector;
 use trifury::config::{Config, init_config, get_config};
 use trifury::error_handling::{init_error_tracker, record_error};
 
@@ -119,10 +108,11 @@ async fn main() -> Result<(), AppError> {
         .filter_module("trifury::xtcom_websocket", LevelFilter::Warn)
         .filter_module("trifury::lbank_websocket", LevelFilter::Warn)
         .filter_module("trifury::websocket", LevelFilter::Warn)
-        .filter_module("trifury::network::tapbit_websocket", LevelFilter::Warn)
-        .filter_module("trifury::network::hbit_websocket", LevelFilter::Warn)
-        .filter_module("trifury::network::batonex_websocket", LevelFilter::Warn)
-        .filter_module("trifury::network::coincatch_websocket", LevelFilter::Warn)
+        // 注意：原 network 模块日志过滤器已移除
+        // .filter_module("trifury::connectors::tapbit", LevelFilter::Warn)
+        // .filter_module("trifury::connectors::hbit", LevelFilter::Warn)
+        // .filter_module("trifury::connectors::batonex", LevelFilter::Warn)
+        // .filter_module("trifury::connectors::coincatch", LevelFilter::Warn)
         .format(|buf, record| {
             // Use a more minimal format for regular logs to prevent terminal spam
             if record.level() <= log::Level::Info {
@@ -319,6 +309,8 @@ async fn main() -> Result<(), AppError> {
     // Build exchange fees table
     let exchange_fees = build_exchange_fees_from_config();
 
+    // 注意：产品数据获取已移除，等待重构完成
+    /*
     // Get perpetual products
     let perpetual_products = match get_perpetual_products(&app_state).await {
         Ok(products) => products,
@@ -379,6 +371,9 @@ async fn main() -> Result<(), AppError> {
     let hbit_chunks = distribute_even_chunks(&hbit_symbols, max_ws_connections / 10, 10); // Max 10 per connection
     let batonex_chunks = distribute_even_chunks(&batonex_symbols, max_ws_connections / 10, 10); // Max 10 per connection
     let coincatch_chunks = distribute_even_chunks(&coincatch_symbols, max_ws_connections / 10, 10); // Max 10 per connection
+    */
+    
+    info!("WebSocket连接器已暂时禁用，等待重构完成");
 
     // Mark initialization as complete
     *app_state.is_initializing.write().await = false;
@@ -408,6 +403,8 @@ async fn main() -> Result<(), AppError> {
     let mut scanner_tasks = Vec::new();
 
     // Launch Phemex WebSocket connections
+    // 注意：WebSocket处理器已移除，等待重构完成
+    /*
     info!("Starting Phemex WebSocket connections");
     for (i, chunk) in phemex_symbol_chunks.into_iter().enumerate() {
         let state_clone = app_state.clone();
@@ -421,7 +418,10 @@ async fn main() -> Result<(), AppError> {
         
         websocket_tasks.push(task);
     }
+    */
     
+    // 注意：所有WebSocket处理器已移除，等待重构完成
+    /*
     // Launch LBANK WebSocket connections
     info!("Starting LBANK WebSocket connections");
     for (i, chunk) in lbank_chunks.into_iter().enumerate() {
@@ -512,7 +512,11 @@ async fn main() -> Result<(), AppError> {
 
         websocket_tasks.push(task);
     }
+    */
 
+    // 注意：期货 WebSocket 连接已暂时禁用，等待重构完成
+    // TODO: 使用重构后的连接器系统重新实现期货连接
+    /*
     // Start futures WebSocket connections
     info!("Starting futures WebSocket connections...");
 
@@ -566,13 +570,17 @@ async fn main() -> Result<(), AppError> {
             websocket_tasks.push(task);
         }
     }
+    */
         
     // Start a connection health manager
+    // 注意：连接健康管理器已移除，等待重构完成
+    /*
     let health_state = app_state.clone();
     let health_task = websocket_runtime_handle.spawn(async move {
         run_connection_health_manager(health_state).await;
     });
     websocket_tasks.push(health_task);
+    */
 
     // Allow time for connections to initialize
     tokio::time::sleep(Duration::from_secs(2)).await;
