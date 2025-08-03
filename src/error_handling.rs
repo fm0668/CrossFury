@@ -1,10 +1,9 @@
 // error_handling.rs - Enhanced error handling system
 
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Instant, Duration};
 use dashmap::DashMap;
-use log::{info, error, warn};
+use log::{info, error};
 use crate::core::AppError;
 use crate::exchange_types::Exchange;
 use crate::config::get_config;
@@ -67,6 +66,7 @@ impl From<&AppError> for ErrorCategory {
             AppError::ConnectionError(_) => ErrorCategory::ConnectionFailure,
             AppError::ConfigError(_) => ErrorCategory::InternalFailure,
             AppError::CryptoError(_) => ErrorCategory::InternalFailure,
+            AppError::RiskError(_) => ErrorCategory::ExchangeRejection,
             AppError::Other(msg) => {
                 if msg.contains("rate limit") || msg.contains("too many requests") {
                     ErrorCategory::RateLimitExceeded
@@ -110,6 +110,12 @@ pub struct CircuitBreakerStatus {
     pub trigger_category: ErrorCategory,
 }
 
+impl Default for ErrorTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ErrorTracker {
     pub fn new() -> Self {
         Self {
@@ -138,13 +144,13 @@ impl ErrorTracker {
         // Record error start time if first error
         self.error_start_times
             .entry(exchange)
-            .or_insert_with(|| Instant::now());
+            .or_insert_with(Instant::now);
             
         // Record connection-specific error if connection_id provided
         if let Some(conn_id) = connection_id {
             let mut errors = self.connection_errors
                 .entry(conn_id.to_string())
-                .or_insert_with(Vec::new);
+                .or_default();
                 
             // Keep last 10 errors per connection
             if errors.len() >= 10 {
@@ -169,8 +175,7 @@ impl ErrorTracker {
                 trigger_category: category,
             });
             
-            error!("Circuit breaker OPENED for {:?} due to too many {:?} errors. Will reopen in {:?}",
-                exchange, category, backoff_time);
+            error!("Circuit breaker OPENED for {exchange:?} due to too many {category:?} errors. Will reopen in {backoff_time:?}");
         }
     }
     
@@ -302,7 +307,7 @@ impl ErrorTracker {
         if let Some(mut breaker) = self.circuit_breakers.get_mut(&exchange) {
             if breaker.is_open {
                 breaker.is_open = false;
-                info!("Circuit breaker CLOSED for {:?}. Normal operations resuming.", exchange);
+                info!("Circuit breaker CLOSED for {exchange:?}. Normal operations resuming.");
                 
                 // Reset error counts for this exchange
                 for entry in self.error_counts.iter_mut() {
@@ -392,7 +397,7 @@ pub static ERROR_TRACKER: std::sync::OnceLock<ErrorTracker> = std::sync::OnceLoc
 
 // Initialize the error tracker
 pub fn init_error_tracker() -> &'static ErrorTracker {
-    ERROR_TRACKER.get_or_init(|| ErrorTracker::new())
+    ERROR_TRACKER.get_or_init(ErrorTracker::new)
 }
 
 // Helper function to record errors with proper classification

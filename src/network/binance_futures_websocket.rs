@@ -25,7 +25,7 @@ pub async fn binance_futures_websocket_handler(
     loop {
         match connect_async(ws_url).await {
             Ok((ws_stream, _)) => {
-                info!("BINANCE_FUTURES {}: Connected successfully", connection_id);
+                info!("BINANCE_FUTURES {connection_id}: Connected successfully");
                 let (mut write, mut read) = ws_stream.split();
 
                 // Subscribe to depth data for each symbol
@@ -38,7 +38,7 @@ pub async fn binance_futures_websocket_handler(
                     });
 
                     if let Err(e) = write.send(Message::Text(subscribe_msg.to_string())).await {
-                        error!("BINANCE_FUTURES {}: Failed to subscribe {}: {}", connection_id, symbol, e);
+                        error!("BINANCE_FUTURES {connection_id}: Failed to subscribe {symbol}: {e}");
                     }
                     sleep(Duration::from_millis(10)).await;
                 }
@@ -55,7 +55,7 @@ pub async fn binance_futures_websocket_handler(
                             let _ = write.send(Message::Pong(payload)).await;
                         }
                         Err(e) => {
-                            error!("BINANCE_FUTURES {}: WebSocket error: {}", connection_id, e);
+                            error!("BINANCE_FUTURES {connection_id}: WebSocket error: {e}");
                             break;
                         }
                         _ => {}
@@ -63,7 +63,7 @@ pub async fn binance_futures_websocket_handler(
                 }
             }
             Err(e) => {
-                error!("BINANCE_FUTURES {}: Connection failed: {}", connection_id, e);
+                error!("BINANCE_FUTURES {connection_id}: Connection failed: {e}");
                 sleep(Duration::from_secs(5)).await;
             }
         }
@@ -79,7 +79,7 @@ async fn process_binance_futures_message(
     // Handle subscription confirmation
     if let Some(result) = data.get("result") {
         if result.is_null() {
-            debug!("BINANCE_FUTURES {}: Subscription confirmed", connection_id);
+            debug!("BINANCE_FUTURES {connection_id}: Subscription confirmed");
         }
         return;
     }
@@ -132,7 +132,7 @@ async fn process_binance_depth_update(
             
             if let Some(tx) = &app_state.orderbook_queue {
                 if let Err(e) = tx.send(update) {
-                    error!("BINANCE_FUTURES {}: Failed to send update: {}", connection_id, e);
+                    error!("BINANCE_FUTURES {connection_id}: Failed to send update: {e}");
                 }
             }
         }

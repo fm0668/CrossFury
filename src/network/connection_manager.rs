@@ -19,8 +19,7 @@ pub async fn run_connection_health_manager(app_state: AppState) {
         let global_idle_time = app_state.get_global_idle_time();
         
         if global_idle_time > STALE_CONNECTION_TIMEOUT as u64 {
-            error!("GLOBAL CONNECTION ALERT: No messages for {}ms (threshold: {}ms)",
-                  global_idle_time, STALE_CONNECTION_TIMEOUT);
+            error!("GLOBAL CONNECTION ALERT: No messages for {global_idle_time}ms (threshold: {STALE_CONNECTION_TIMEOUT}ms)");
                   
             // Reset all connections if globally stale
             if global_idle_time > FORCE_RECONNECT_TIMEOUT as u64 {
@@ -33,7 +32,7 @@ pub async fn run_connection_health_manager(app_state: AppState) {
                 }
             }
         } else {
-            debug!("Global connection health: Last message {}ms ago", global_idle_time);
+            debug!("Global connection health: Last message {global_idle_time}ms ago");
         }
         
         // Check individual connection activity - only log problematic connections
@@ -42,13 +41,11 @@ pub async fn run_connection_health_manager(app_state: AppState) {
             let idle_time = app_state.get_connection_idle_time(conn_id);
             
             if idle_time > STALE_CONNECTION_TIMEOUT as u64 {
-                error!("Connection {} ALERT: No messages for {}ms (threshold: {}ms)", 
-                      conn_id, idle_time, STALE_CONNECTION_TIMEOUT);
+                error!("Connection {conn_id} ALERT: No messages for {idle_time}ms (threshold: {STALE_CONNECTION_TIMEOUT}ms)");
                 
                 // Signal reconnection for stale connections
                 if idle_time > FORCE_RECONNECT_TIMEOUT as u64 {
-                    error!("Connection {} EMERGENCY: Forcing reconnection after {}ms idle", 
-                          conn_id, idle_time);
+                    error!("Connection {conn_id} EMERGENCY: Forcing reconnection after {idle_time}ms idle");
                     app_state.signal_reconnect(conn_id);
                 }
             }
@@ -64,8 +61,7 @@ pub async fn run_connection_health_manager(app_state: AppState) {
                 let cross_exchange_checks = app_state.cross_exchange_checks.load(Ordering::Relaxed);
                 let profitable_opportunities = app_state.profitable_opportunities.load(Ordering::Relaxed);
                 
-                info!("Connection stats: WS msgs={}, Price updates={}, Cross-exchange checks={}, Profitable opps={}", 
-                      websocket_msgs, price_updates, cross_exchange_checks, profitable_opportunities);
+                info!("Connection stats: WS msgs={websocket_msgs}, Price updates={price_updates}, Cross-exchange checks={cross_exchange_checks}, Profitable opps={profitable_opportunities}");
             }
         }
         

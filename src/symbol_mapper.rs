@@ -16,6 +16,12 @@ pub struct SymbolMapper {
     full_symbol_mappings: HashMap<(String, String), String>, // (canonical, exchange) -> full_prefixed_symbol
 }
 
+impl Default for SymbolMapper {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SymbolMapper {
     /// Create a new empty symbol mapper
     pub fn new() -> Self {
@@ -41,7 +47,7 @@ impl SymbolMapper {
                 let exchange = parts[0].to_string();
                 let symbol = parts[1].to_string();
                 
-                exchange_symbols.entry(exchange).or_insert_with(Vec::new).push(symbol);
+                exchange_symbols.entry(exchange).or_default().push(symbol);
             }
         }
 
@@ -88,7 +94,7 @@ impl SymbolMapper {
                 };
                 
                 // Create canonical symbol format: BASE/QUOTE
-                let canonical = format!("{}/{}", base, quote);
+                let canonical = format!("{base}/{quote}");
                 
                 // Add mappings
                 mapper.add_mapping(&canonical, exchange, symbol);
@@ -98,7 +104,7 @@ impl SymbolMapper {
         // Pre-compute full symbol mappings for faster lookups
         for (canonical, exchange_map) in &mapper.canonical_to_exchange {
             for (exchange, symbol) in exchange_map {
-                let full_symbol = format!("{}:{}", exchange, symbol);
+                let full_symbol = format!("{exchange}:{symbol}");
                 mapper.full_symbol_mappings.insert((canonical.clone(), exchange.clone()), full_symbol);
             }
         }
@@ -111,11 +117,11 @@ impl SymbolMapper {
         // Store mapping from canonical to exchange
         self.canonical_to_exchange
             .entry(canonical.to_string())
-            .or_insert_with(HashMap::new)
+            .or_default()
             .insert(exchange.to_string(), exchange_symbol.to_string());
         
         // Store reverse mapping
-        let prefixed_symbol = format!("{}:{}", exchange, exchange_symbol);
+        let prefixed_symbol = format!("{exchange}:{exchange_symbol}");
         self.exchange_to_canonical.insert(prefixed_symbol, canonical.to_string());
     }
     
@@ -144,7 +150,7 @@ impl SymbolMapper {
         self.canonical_to_exchange
             .get(canonical)
             .and_then(|exchange_map| exchange_map.get(exchange))
-            .map(|symbol| format!("{}:{}", exchange, symbol))
+            .map(|symbol| format!("{exchange}:{symbol}"))
     }
     
     /// Convert from exchange symbol to canonical form
@@ -158,7 +164,7 @@ impl SymbolMapper {
         
         if let Some(exchange_map) = self.canonical_to_exchange.get(canonical) {
             for (exchange, symbol) in exchange_map {
-                result.push(format!("{}:{}", exchange, symbol));
+                result.push(format!("{exchange}:{symbol}"));
             }
         }
         

@@ -2,7 +2,7 @@
 //! 
 //! 实现期货交易所的REST API调用功能
 
-use crate::connectors::binance::futures::config::{BinanceFuturesConfig, PositionSide as ConfigPositionSide};
+use crate::connectors::binance::futures::config::BinanceFuturesConfig;
 use crate::connectors::binance::futures::constants::*;
 use crate::types::trading::{OrderSide, OrderType, TimeInForce as TradingTimeInForce, PositionSide as TradingPositionSide};
 use crate::core::AppError;
@@ -11,11 +11,9 @@ use crate::core::AppError;
 pub type Result<T> = std::result::Result<T, AppError>;
 
 use reqwest::{Client, Method, Response};
-use serde_json::{Value, json};
-use std::collections::HashMap;
+use serde_json::Value;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
-use log::{info, warn, error, debug};
 use chrono::Utc;
 use std::time::Duration;
 
@@ -124,10 +122,10 @@ impl BinanceFuturesRestClient {
             .get(&url)
             .send()
             .await
-            .map_err(|e| AppError::ConnectionError(format!("请求失败: {}", e)))?;
+            .map_err(|e| AppError::ConnectionError(format!("请求失败: {e}")))?;
         
         let data: Value = response.json().await
-            .map_err(|e| AppError::ParseError(format!("解析响应失败: {}", e)))?;
+            .map_err(|e| AppError::ParseError(format!("解析响应失败: {e}")))?;
         
         data.get("serverTime")
             .and_then(|t| t.as_u64())
@@ -142,10 +140,10 @@ impl BinanceFuturesRestClient {
             .get(&url)
             .send()
             .await
-            .map_err(|e| AppError::ConnectionError(format!("请求失败: {}", e)))?;
+            .map_err(|e| AppError::ConnectionError(format!("请求失败: {e}")))?;
         
         response.json().await
-            .map_err(|e| AppError::ParseError(format!("解析响应失败: {}", e)))
+            .map_err(|e| AppError::ParseError(format!("解析响应失败: {e}")))
     }
     
     /// 获取深度数据
@@ -164,10 +162,10 @@ impl BinanceFuturesRestClient {
             .get(&url)
             .send()
             .await
-            .map_err(|e| AppError::ConnectionError(format!("请求失败: {}", e)))?;
+            .map_err(|e| AppError::ConnectionError(format!("请求失败: {e}")))?;
         
         response.json().await
-            .map_err(|e| AppError::ParseError(format!("解析响应失败: {}", e)))
+            .map_err(|e| AppError::ParseError(format!("解析响应失败: {e}")))
     }
     
     /// 获取24小时价格统计
@@ -175,17 +173,17 @@ impl BinanceFuturesRestClient {
         let mut url = format!("{}{}", self.base_url, FUTURES_TICKER_24HR_PATH);
         
         if let Some(symbol) = symbol {
-            url.push_str(&format!("?symbol={}", symbol));
+            url.push_str(&format!("?symbol={symbol}"));
         }
         
         let response = self.client
             .get(&url)
             .send()
             .await
-            .map_err(|e| AppError::ConnectionError(format!("请求失败: {}", e)))?;
+            .map_err(|e| AppError::ConnectionError(format!("请求失败: {e}")))?;
         
         response.json().await
-            .map_err(|e| AppError::ParseError(format!("解析响应失败: {}", e)))
+            .map_err(|e| AppError::ParseError(format!("解析响应失败: {e}")))
     }
     
     /// 获取标记价格
@@ -193,17 +191,17 @@ impl BinanceFuturesRestClient {
         let mut url = format!("{}{}", self.base_url, FUTURES_MARK_PRICE_PATH);
         
         if let Some(symbol) = symbol {
-            url.push_str(&format!("?symbol={}", symbol));
+            url.push_str(&format!("?symbol={symbol}"));
         }
         
         let response = self.client
             .get(&url)
             .send()
             .await
-            .map_err(|e| AppError::ConnectionError(format!("请求失败: {}", e)))?;
+            .map_err(|e| AppError::ConnectionError(format!("请求失败: {e}")))?;
         
         response.json().await
-            .map_err(|e| AppError::ParseError(format!("解析响应失败: {}", e)))
+            .map_err(|e| AppError::ParseError(format!("解析响应失败: {e}")))
     }
     
     /// 获取资金费率历史
@@ -228,10 +226,10 @@ impl BinanceFuturesRestClient {
             .get(&url)
             .send()
             .await
-            .map_err(|e| AppError::ConnectionError(format!("请求失败: {}", e)))?;
+            .map_err(|e| AppError::ConnectionError(format!("请求失败: {e}")))?;
         
         response.json().await
-            .map_err(|e| AppError::ParseError(format!("解析响应失败: {}", e)))
+            .map_err(|e| AppError::ParseError(format!("解析响应失败: {e}")))
     }
     
     /// 获取持仓量
@@ -242,10 +240,10 @@ impl BinanceFuturesRestClient {
             .get(&url)
             .send()
             .await
-            .map_err(|e| AppError::ConnectionError(format!("请求失败: {}", e)))?;
+            .map_err(|e| AppError::ConnectionError(format!("请求失败: {e}")))?;
         
         response.json().await
-            .map_err(|e| AppError::ParseError(format!("解析响应失败: {}", e)))
+            .map_err(|e| AppError::ParseError(format!("解析响应失败: {e}")))
     }
     
     /// 获取账户信息
@@ -262,7 +260,7 @@ impl BinanceFuturesRestClient {
         let response = self.send_signed_request(Method::GET, &url, None).await?;
         
         response.json().await
-            .map_err(|e| AppError::ParseError(format!("解析响应失败: {}", e)))
+            .map_err(|e| AppError::ParseError(format!("解析响应失败: {e}")))
     }
     
     /// 获取持仓信息
@@ -283,7 +281,7 @@ impl BinanceFuturesRestClient {
         let response = self.send_signed_request(Method::GET, &url, None).await?;
         
         response.json().await
-            .map_err(|e| AppError::ParseError(format!("解析响应失败: {}", e)))
+            .map_err(|e| AppError::ParseError(format!("解析响应失败: {e}")))
     }
     
     /// 下单
@@ -335,7 +333,7 @@ impl BinanceFuturesRestClient {
         let response = self.send_signed_request(Method::POST, &url, Some(body)).await?;
         
         response.json().await
-            .map_err(|e| AppError::ParseError(format!("解析响应失败: {}", e)))
+            .map_err(|e| AppError::ParseError(format!("解析响应失败: {e}")))
     }
     
     /// 取消订单
@@ -364,7 +362,7 @@ impl BinanceFuturesRestClient {
         let response = self.send_signed_request(Method::DELETE, &url, Some(body)).await?;
         
         response.json().await
-            .map_err(|e| AppError::ParseError(format!("解析响应失败: {}", e)))
+            .map_err(|e| AppError::ParseError(format!("解析响应失败: {e}")))
     }
     
     /// 查询订单
@@ -392,7 +390,7 @@ impl BinanceFuturesRestClient {
         let response = self.send_signed_request(Method::GET, &url, None).await?;
         
         response.json().await
-            .map_err(|e| AppError::ParseError(format!("解析响应失败: {}", e)))
+            .map_err(|e| AppError::ParseError(format!("解析响应失败: {e}")))
     }
     
     /// 调整杠杆
@@ -415,7 +413,7 @@ impl BinanceFuturesRestClient {
         let response = self.send_signed_request(Method::POST, &url, Some(body)).await?;
         
         response.json().await
-            .map_err(|e| AppError::ParseError(format!("解析响应失败: {}", e)))
+            .map_err(|e| AppError::ParseError(format!("解析响应失败: {e}")))
     }
     
     /// 调整保证金模式
@@ -438,7 +436,7 @@ impl BinanceFuturesRestClient {
         let response = self.send_signed_request(Method::POST, &url, Some(body)).await?;
         
         response.json().await
-            .map_err(|e| AppError::ParseError(format!("解析响应失败: {}", e)))
+            .map_err(|e| AppError::ParseError(format!("解析响应失败: {e}")))
     }
     
     /// 调整持仓模式
@@ -460,7 +458,7 @@ impl BinanceFuturesRestClient {
         let response = self.send_signed_request(Method::POST, &url, Some(body)).await?;
         
         response.json().await
-            .map_err(|e| AppError::ParseError(format!("解析响应失败: {}", e)))
+            .map_err(|e| AppError::ParseError(format!("解析响应失败: {e}")))
     }
     
     /// 启动用户数据流
@@ -470,7 +468,7 @@ impl BinanceFuturesRestClient {
         let response = self.send_signed_request(Method::POST, &url, None).await?;
         
         let data: Value = response.json().await
-            .map_err(|e| AppError::ParseError(format!("解析响应失败: {}", e)))?;
+            .map_err(|e| AppError::ParseError(format!("解析响应失败: {e}")))?;
         
         data.get("listenKey")
             .and_then(|k| k.as_str())
@@ -481,7 +479,7 @@ impl BinanceFuturesRestClient {
     /// 保持用户数据流活跃
     pub async fn keepalive_user_data_stream(&self, listen_key: &str) -> Result<()> {
         let url = format!("{}/fapi/v1/listenKey", self.base_url);
-        let body = format!("listenKey={}", listen_key);
+        let body = format!("listenKey={listen_key}");
         
         let _response = self.send_signed_request(Method::PUT, &url, Some(body)).await?;
         
@@ -491,7 +489,7 @@ impl BinanceFuturesRestClient {
     /// 关闭用户数据流
     pub async fn close_user_data_stream(&self, listen_key: &str) -> Result<()> {
         let url = format!("{}/fapi/v1/listenKey", self.base_url);
-        let body = format!("listenKey={}", listen_key);
+        let body = format!("listenKey={listen_key}");
         
         let _response = self.send_signed_request(Method::DELETE, &url, Some(body)).await?;
         
@@ -514,13 +512,13 @@ impl BinanceFuturesRestClient {
         }
         
         request.send().await
-            .map_err(|e| AppError::ConnectionError(format!("请求失败: {}", e)))
+            .map_err(|e| AppError::ConnectionError(format!("请求失败: {e}")))
     }
     
     /// 构建查询字符串
     fn build_query_string(&self, params: &[(&str, String)]) -> String {
         params.iter()
-            .map(|(k, v)| format!("{}={}", k, v))
+            .map(|(k, v)| format!("{k}={v}"))
             .collect::<Vec<_>>()
             .join("&")
     }
@@ -531,7 +529,7 @@ impl BinanceFuturesRestClient {
             .ok_or_else(|| AppError::ConfigError("缺少密钥".to_string()))?;
         
         let mut mac = HmacSha256::new_from_slice(secret_key.as_bytes())
-            .map_err(|e| AppError::CryptoError(format!("HMAC初始化失败: {}", e)))?;
+            .map_err(|e| AppError::CryptoError(format!("HMAC初始化失败: {e}")))?;
         
         mac.update(query_string.as_bytes());
         let result = mac.finalize();

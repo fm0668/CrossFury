@@ -28,7 +28,7 @@ pub async fn websocket_handler(
     app_state.clear_reconnect_signal(&connection_id);
     
     // Log the WebSocket URL for debugging
-    info!("Connection {}: Connecting to WebSocket URL: {}", connection_id, WEBSOCKET_URL);
+    info!("Connection {connection_id}: Connecting to WebSocket URL: {WEBSOCKET_URL}");
     
     let mut retry_count = 0;
     let max_retries = 10;
@@ -49,8 +49,8 @@ pub async fn websocket_handler(
         
         match connection_result {
             Ok((ws_stream, _)) => {
-                info!("Connection {}: WebSocket connection established", connection_id);
-                info!("Connection {}: Starting main WebSocket event loop", connection_id);
+                info!("Connection {connection_id}: WebSocket connection established");
+                info!("Connection {connection_id}: Starting main WebSocket event loop");
                 
                 // Update connection timestamp after successful connection
                 app_state.update_connection_timestamp(&connection_id);
@@ -66,7 +66,7 @@ pub async fn websocket_handler(
 
                 let ping_task = tokio::spawn(async move {
                     // Log when the ping task starts
-                    info!("Connection {}: Ping task started", ping_connection_id);
+                    info!("Connection {ping_connection_id}: Ping task started");
                     
                     let mut ping_count = 0;
                     // Use 3 second interval for pings (reduced from 5)
@@ -81,8 +81,7 @@ pub async fn websocket_handler(
                         "params": []
                     });
                     
-                    info!("Connection {}: Sending immediate startup ping with ID {}", 
-                        ping_connection_id, ping_id);
+                    info!("Connection {ping_connection_id}: Sending immediate startup ping with ID {ping_id}");
                     
                     // Update timestamp for ping activity
                     ping_app_state.update_connection_timestamp(&ping_connection_id);
@@ -90,7 +89,7 @@ pub async fn websocket_handler(
                     // Get a lock on the writer and send the ping
                     let mut writer = write_clone.lock().await;
                     if let Err(e) = writer.send(Message::Text(ping_msg.to_string())).await {
-                        error!("Connection {}: Failed to send startup ping: {}", ping_connection_id, e);
+                        error!("Connection {ping_connection_id}: Failed to send startup ping: {e}");
                         return; // Exit the ping task if initial ping fails
                     }
                     drop(writer); // Explicitly release the lock
@@ -104,14 +103,12 @@ pub async fn websocket_handler(
                         let idle_time = ping_app_state.get_connection_idle_time(&ping_connection_id);
                         
                         if idle_time > STALE_CONNECTION_TIMEOUT as u64 {
-                            warn!("Connection {}: No messages for {}ms (threshold: {}ms)", 
-                                ping_connection_id, idle_time, STALE_CONNECTION_TIMEOUT);
+                            warn!("Connection {ping_connection_id}: No messages for {idle_time}ms (threshold: {STALE_CONNECTION_TIMEOUT}ms)");
                         }
                         
                         // Check if reconnection was signaled
                         if ping_app_state.should_reconnect(&ping_connection_id) {
-                            error!("Connection {}: Reconnection signaled, terminating ping task", 
-                                  ping_connection_id);
+                            error!("Connection {ping_connection_id}: Reconnection signaled, terminating ping task");
                             return;
                         }
                         
@@ -124,8 +121,7 @@ pub async fn websocket_handler(
                         });
                         
                         // Log every ping
-                        info!("Connection {}: Sending heartbeat ping {} with ID {}", 
-                            ping_connection_id, ping_count, ping_id);
+                        info!("Connection {ping_connection_id}: Sending heartbeat ping {ping_count} with ID {ping_id}");
                         
                         // Update timestamp for ping activity
                         ping_app_state.update_connection_timestamp(&ping_connection_id);
@@ -133,13 +129,13 @@ pub async fn websocket_handler(
                         // Get a lock on the writer and send the ping
                         let mut writer = write_clone.lock().await;
                         if let Err(e) = writer.send(Message::Text(ping_msg.to_string())).await {
-                            error!("Connection {}: Failed to send ping {}: {}", ping_connection_id, ping_count, e);
+                            error!("Connection {ping_connection_id}: Failed to send ping {ping_count}: {e}");
                             break;
                         }
                         drop(writer); // Explicitly release the lock
                     }
     
-                    warn!("Connection {}: Ping task terminated after {} pings", ping_connection_id, ping_count);
+                    warn!("Connection {ping_connection_id}: Ping task terminated after {ping_count} pings");
                 });
 
                 // NEW CODE: Subscribe to symbols after connection is established
@@ -154,14 +150,14 @@ pub async fn websocket_handler(
                     });
                     
                     // Log the subscription request
-                    info!("Connection {}: Subscribing to orderbook for {}", connection_id, symbol);
+                    info!("Connection {connection_id}: Subscribing to orderbook for {symbol}");
                     
                     // Send subscription request
                     let mut writer = write.lock().await;
                     if let Err(e) = writer.send(Message::Text(subscribe_msg.to_string())).await {
-                        error!("Connection {}: Failed to send subscription for {}: {}", connection_id, symbol, e);
+                        error!("Connection {connection_id}: Failed to send subscription for {symbol}: {e}");
                     } else {
-                        info!("Connection {}: Subscription sent for {}", connection_id, symbol);
+                        info!("Connection {connection_id}: Subscription sent for {symbol}");
                     }
                     // Release the lock before sleeping
                     drop(writer);
@@ -175,8 +171,7 @@ pub async fn websocket_handler(
                 loop {
                     // Check if reconnection was signaled
                     if app_state.should_reconnect(&connection_id) {
-                        error!("Connection {}: Reconnection signaled, breaking main event loop", 
-                              connection_id);
+                        error!("Connection {connection_id}: Reconnection signaled, breaking main event loop");
                         break;
                     }
                     
@@ -192,7 +187,7 @@ pub async fn websocket_handler(
                             consecutive_timeouts = 0;
                             
                             // NEW CODE: Improved logging for debug purposes
-                            info!("Connection {}: Received message: {}", connection_id, text);
+                            info!("Connection {connection_id}: Received message: {text}");
                             
                             // Update connection timestamp immediately on message
                             app_state.update_connection_timestamp(&connection_id);
@@ -284,8 +279,7 @@ pub async fn websocket_handler(
                                                         let prefixed_symbol = ensure_exchange_prefix(&symbol, "PHEMEX");
                                                         
                                                         // Log the price update
-                                                        info!("Connection {}: Received valid orderbook update for {}: ask={}, bid={}", 
-                                                            connection_id, prefixed_symbol, best_ask, best_bid);
+                                                        info!("Connection {connection_id}: Received valid orderbook update for {prefixed_symbol}: ask={best_ask}, bid={best_bid}");
                                                         
                                                         // Send to orderbook queue
                                                         if let Some(tx) = &app_state.orderbook_queue {
@@ -303,11 +297,9 @@ pub async fn websocket_handler(
                                                             };
                                                             
                                                             if let Err(e) = tx.send(update) {
-                                                                error!("Connection {}: Failed to send orderbook update: {}", 
-                                                                      connection_id, e);
+                                                                error!("Connection {connection_id}: Failed to send orderbook update: {e}");
                                                             } else {
-                                                                debug!("Connection {}: Enqueued price update for {}: ask={}, bid={}", 
-                                                                     connection_id, symbol, best_ask, best_bid);
+                                                                debug!("Connection {connection_id}: Enqueued price update for {symbol}: ask={best_ask}, bid={best_bid}");
                                                             }
                                                         } else {
                                                             app_state.price_data.insert(
@@ -334,14 +326,14 @@ pub async fn websocket_handler(
                                 } else {
                                     // For other message types, use the standard processor
                                     if let Err(e) = process_message(&app_state, &connection_id, &text).await {
-                                        warn!("Connection {}: Error processing message: {}", connection_id, e);
+                                        warn!("Connection {connection_id}: Error processing message: {e}");
                                         // Continue instead of breaking
                                     }
                                 }
                             } else {
                                 // If we couldn't parse as JSON, still try to process through standard processor
                                 if let Err(e) = process_message(&app_state, &connection_id, &text).await {
-                                    warn!("Connection {}: Error processing message: {}", connection_id, e);
+                                    warn!("Connection {connection_id}: Error processing message: {e}");
                                     // Continue instead of breaking
                                 }
                             }
@@ -363,7 +355,7 @@ pub async fn websocket_handler(
                             app_state.increment_websocket_messages(1);
                             
                             consecutive_timeouts = 0;
-                            info!("Connection {}: Received Ping, sending Pong", connection_id);
+                            info!("Connection {connection_id}: Received Ping, sending Pong");
                             
                             // Update connection timestamp
                             app_state.update_connection_timestamp(&connection_id);
@@ -371,7 +363,7 @@ pub async fn websocket_handler(
                             // Respond with Pong
                             let mut writer = write.lock().await;
                             if let Err(e) = writer.send(Message::Pong(data.clone())).await {
-                                error!("Connection {}: Failed to send Pong: {}", connection_id, e);
+                                error!("Connection {connection_id}: Failed to send Pong: {e}");
                             }
                         },
                         Ok(Some(Ok(Message::Pong(_)))) => {
@@ -379,7 +371,7 @@ pub async fn websocket_handler(
                             app_state.increment_websocket_messages(1);
                             
                             consecutive_timeouts = 0;
-                            debug!("Connection {}: Received Pong response", connection_id);
+                            debug!("Connection {connection_id}: Received Pong response");
                             
                             // Update connection timestamp
                             app_state.update_connection_timestamp(&connection_id);
@@ -389,7 +381,7 @@ pub async fn websocket_handler(
                             app_state.increment_websocket_messages(1);
                             
                             consecutive_timeouts = 0;
-                            debug!("Connection {}: Received frame message", connection_id);
+                            debug!("Connection {connection_id}: Received frame message");
                         
                             // Update connection timestamp
                             app_state.update_connection_timestamp(&connection_id);
@@ -398,21 +390,21 @@ pub async fn websocket_handler(
                             // Add message counting here
                             app_state.increment_websocket_messages(1);
                             
-                            info!("Connection {}: Received close frame: {:?}", connection_id, frame);
+                            info!("Connection {connection_id}: Received close frame: {frame:?}");
                             break;
                         },
                         Ok(Some(Err(e))) => {
-                            error!("Connection {}: WebSocket error: {}", connection_id, e);
+                            error!("Connection {connection_id}: WebSocket error: {e}");
                             if e.to_string().contains("timeout") || e.to_string().contains("timed out") {
                                 consecutive_timeouts += 1;
                             }
                             if consecutive_timeouts >= 3 {
-                                error!("Connection {}: Too many consecutive errors, reconnecting", connection_id);
+                                error!("Connection {connection_id}: Too many consecutive errors, reconnecting");
                                 break;
                             }
                         },
                         Ok(None) => {
-                            info!("Connection {}: WebSocket stream ended", connection_id);
+                            info!("Connection {connection_id}: WebSocket stream ended");
                             break;
                         },
                         Err(_) => {
@@ -421,8 +413,7 @@ pub async fn websocket_handler(
                             // Check idle time with our new atomic tracking
                             let idle_time = app_state.get_connection_idle_time(&connection_id);
                             
-                            warn!("Connection {}: WebSocket read timeout - idle for {}ms", 
-                                connection_id, idle_time);
+                            warn!("Connection {connection_id}: WebSocket read timeout - idle for {idle_time}ms");
                             
                             // Send emergency ping
                             let ping_id = app_state.get_next_request_id().await;
@@ -432,14 +423,14 @@ pub async fn websocket_handler(
                                 "params": []
                             });
                             
-                            info!("Connection {}: Sending emergency ping with ID {}", connection_id, ping_id);
+                            info!("Connection {connection_id}: Sending emergency ping with ID {ping_id}");
                             
                             // Update timestamp
                             app_state.update_connection_timestamp(&connection_id);
                             
                             let mut writer = write.lock().await;
                             if let Err(e) = writer.send(Message::Text(ping_msg.to_string())).await {
-                                error!("Connection {}: Failed to send emergency ping: {}", connection_id, e);
+                                error!("Connection {connection_id}: Failed to send emergency ping: {e}");
                                 break;
                             }
                             
@@ -447,7 +438,7 @@ pub async fn websocket_handler(
                             sleep(Duration::from_millis(500)).await; // Reduced from 1000ms
                             
                             if consecutive_timeouts >= 3 {
-                                error!("Connection {}: Too many consecutive timeouts, reconnecting", connection_id);
+                                error!("Connection {connection_id}: Too many consecutive timeouts, reconnecting");
                                 break;
                             }
                         }
@@ -458,8 +449,7 @@ pub async fn websocket_handler(
                     
                     // Force reconnect for completely stale connections
                     if idle_time > FORCE_RECONNECT_TIMEOUT as u64 {
-                        error!("Connection {}: Connection completely stale ({}ms), forcing reconnect", 
-                            connection_id, idle_time);
+                        error!("Connection {connection_id}: Connection completely stale ({idle_time}ms), forcing reconnect");
                         break;
                     }
                 } // End of loop
@@ -468,12 +458,11 @@ pub async fn websocket_handler(
                 ping_task.abort();
                 
                 error!(
-                    "Connection {}: WebSocket session ended, reconnecting...",
-                    connection_id
+                    "Connection {connection_id}: WebSocket session ended, reconnecting..."
                 );
             },
             Err(e) => {
-                error!("Connection {}: Failed to connect: {}", connection_id, e);
+                error!("Connection {connection_id}: Failed to connect: {e}");
                 retry_count += 1;
             }
         }
@@ -486,16 +475,12 @@ pub async fn websocket_handler(
         
         // Fix: Use f64::min instead of std::cmp::min for floating point values
         let delay = f64::min(
-            RECONNECT_DELAY_BASE * 1.5f64.powi(retry_count as i32),
+            RECONNECT_DELAY_BASE * 1.5f64.powi(retry_count),
             MAX_RECONNECT_DELAY
         );
         
         info!(
-            "Connection {}: Reconnecting in {:.2} seconds (attempt {}/{})",
-            connection_id,
-            delay,
-            retry_count,
-            max_retries
+            "Connection {connection_id}: Reconnecting in {delay:.2} seconds (attempt {retry_count}/{max_retries})"
         );
         
         // Update timestamp before sleep
@@ -505,8 +490,7 @@ pub async fn websocket_handler(
     }
     
     error!(
-        "Connection {}: Failed to maintain WebSocket connection after {} retries",
-        connection_id, max_retries
+        "Connection {connection_id}: Failed to maintain WebSocket connection after {max_retries} retries"
     );
     
     Ok(())

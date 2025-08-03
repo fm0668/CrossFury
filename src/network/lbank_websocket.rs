@@ -31,7 +31,7 @@ pub async fn lbank_websocket_handler(
     while retry_count < max_retries {
         info!("LBKEX {}: Connecting to {} (attempt {}/{})", connection_id, LBKEX_WS_URL, retry_count + 1, max_retries);
         let req = LBKEX_WS_URL.into_client_request()
-            .map_err(|e| AppError::WebSocketError(format!("Failed to create request: {}", e)))?;
+            .map_err(|e| AppError::WebSocketError(format!("Failed to create request: {e}")))?;
         let request = req;
 
         match connect_async(request).await {
@@ -53,11 +53,11 @@ pub async fn lbank_websocket_handler(
                             "action": "ping",
                             "ping": ping_id
                         });
-                        info!("LBKEX {}: Sending ping with id {}", ping_connection_id, ping_id);
+                        info!("LBKEX {ping_connection_id}: Sending ping with id {ping_id}");
                         ping_app_state.update_connection_timestamp(&ping_connection_id);
                         let mut writer = write_clone.lock().await;
                         if let Err(e) = writer.send(Message::Text(ping_msg.to_string())).await {
-                            error!("LBKEX {}: Failed to send ping: {}", ping_connection_id, e);
+                            error!("LBKEX {ping_connection_id}: Failed to send ping: {e}");
                             break;
                         }
                     }
@@ -83,7 +83,7 @@ pub async fn lbank_websocket_handler(
                             }
                         }
                                 
-                        format!("{}_{}",  base, quote)
+                        format!("{base}_{quote}")
                     };
 
                     // MODIFIED: Changed from "request" to "subscribe" action for continuous updates
@@ -94,13 +94,13 @@ pub async fn lbank_websocket_handler(
                         "pair": pair
                     });
                     
-                    info!("LBKEX {}: Subscribing with: {}", connection_id, sub_req.to_string());
+                    info!("LBKEX {connection_id}: Subscribing with: {sub_req}");
                     let mut writer = write.lock().await;
                     if let Err(e) = writer.send(Message::Text(sub_req.to_string())).await {
-                        error!("LBKEX {}: Failed to subscribe for {}: {}", connection_id, symbol, e);
+                        error!("LBKEX {connection_id}: Failed to subscribe for {symbol}: {e}");
                         continue;
                     } else {
-                        info!("LBKEX {}: Subscription sent for {}", connection_id, symbol);
+                        info!("LBKEX {connection_id}: Subscription sent for {symbol}");
                     }
                     drop(writer);
                     sleep(Duration::from_millis(1)).await;
@@ -110,7 +110,7 @@ pub async fn lbank_websocket_handler(
                 let mut consecutive_errors = 0;
                 loop {
                     if app_state.should_reconnect(&connection_id) {
-                        error!("LBKEX {}: Reconnection signaled, breaking event loop", connection_id);
+                        error!("LBKEX {connection_id}: Reconnection signaled, breaking event loop");
                         break;
                     }
                     app_state.update_connection_timestamp(&connection_id);
@@ -126,7 +126,7 @@ pub async fn lbank_websocket_handler(
                                     consecutive_errors = 0;
                                     
                                     // NEW CODE: Improved logging for debug purposes
-                                    info!("LBKEX {}: Received message: {}", connection_id, text);
+                                    info!("LBKEX {connection_id}: Received message: {text}");
                                     
                                     // Process LBank message and extract depth data
                                     if let Ok(val) = serde_json::from_str::<Value>(&text) {
@@ -138,10 +138,10 @@ pub async fn lbank_websocket_handler(
                                                     "action": "pong",
                                                     "pong": ping_id
                                                 });
-                                                debug!("LBKEX {}: Responding to ping with pong", connection_id);
+                                                debug!("LBKEX {connection_id}: Responding to ping with pong");
                                                 let mut writer = write.lock().await;
                                                 if let Err(e) = writer.send(Message::Text(pong_msg.to_string())).await {
-                                                    error!("LBKEX {}: Failed to send pong: {}", connection_id, e);
+                                                    error!("LBKEX {connection_id}: Failed to send pong: {e}");
                                                 }
                                                 continue;
                                             }
@@ -170,9 +170,9 @@ pub async fn lbank_websocket_handler(
                                                     // Parse LBANK's specific format for best ask price
                                                     let best_ask = if let Some(asks) = asks_opt {
                                                         if !asks.is_empty() {
-                                                            if let Some(first_ask) = asks.get(0) {
+                                                            if let Some(first_ask) = asks.first() {
                                                                 if let Some(first_ask_array) = first_ask.as_array() {
-                                                                    if first_ask_array.len() >= 1 {
+                                                                    if !first_ask_array.is_empty() {
                                                                         first_ask_array[0].as_str()
                                                                             .unwrap_or("0")
                                                                             .parse::<f64>()
@@ -196,9 +196,9 @@ pub async fn lbank_websocket_handler(
                                                     // Parse LBANK's specific format for best bid price
                                                     let best_bid = if let Some(bids) = bids_opt {
                                                         if !bids.is_empty() {
-                                                            if let Some(first_bid) = bids.get(0) {
+                                                            if let Some(first_bid) = bids.first() {
                                                                 if let Some(first_bid_array) = first_bid.as_array() {
-                                                                    if first_bid_array.len() >= 1 {
+                                                                    if !first_bid_array.is_empty() {
                                                                         first_bid_array[0].as_str()
                                                                             .unwrap_or("0")
                                                                             .parse::<f64>()
@@ -276,8 +276,7 @@ pub async fn lbank_websocket_handler(
                                                         let current_time = chrono::Utc::now().timestamp_millis();
                                                         
                                                         // Log successful price update
-                                                        info!("LBKEX {}: Received valid orderbook update for {}: ask={}, bid={}", 
-                                                            connection_id, prefixed_symbol, best_ask, best_bid);
+                                                        info!("LBKEX {connection_id}: Received valid orderbook update for {prefixed_symbol}: ask={best_ask}, bid={best_bid}");
                                                         
                                                         // Enqueue update to orderbook processor
                                                         if let Some(tx) = &app_state.orderbook_queue {
@@ -295,10 +294,9 @@ pub async fn lbank_websocket_handler(
                                                             };
                                                             
                                                             if let Err(e) = tx.send(update) {
-                                                                error!("LBKEX {}: Failed to send orderbook update: {}", connection_id, e);
+                                                                error!("LBKEX {connection_id}: Failed to send orderbook update: {e}");
                                                             } else {
-                                                                debug!("LBKEX {}: Orderbook updated for {}: bid={}, ask={}", 
-                                                                    connection_id, pair, best_bid, best_ask);
+                                                                debug!("LBKEX {connection_id}: Orderbook updated for {pair}: bid={best_bid}, ask={best_ask}");
                                                             }
                                                         } else {
                                                             // Fallback: update price data directly
@@ -318,8 +316,7 @@ pub async fn lbank_websocket_handler(
                                                             );
                                                         }
                                                     } else {
-                                                        warn!("LBKEX {}: Invalid prices for {}: ask={}, bid={}", 
-                                                             connection_id, pair, best_ask, best_bid);
+                                                        warn!("LBKEX {connection_id}: Invalid prices for {pair}: ask={best_ask}, bid={best_bid}");
                                                     }
                                                 }
                                             }
@@ -327,16 +324,16 @@ pub async fn lbank_websocket_handler(
                                     }
                                 },
                                 Message::Ping(data) => {
-                                    info!("LBKEX {}: Received Ping, sending Pong", connection_id);
+                                    info!("LBKEX {connection_id}: Received Ping, sending Pong");
                                     app_state.update_connection_timestamp(&connection_id);
                                     app_state.increment_websocket_messages(1);
                                     let mut writer = write.lock().await;
                                     if let Err(e) = writer.send(Message::Pong(data)).await {
-                                        error!("LBKEX {}: Failed to send Pong: {}", connection_id, e);
+                                        error!("LBKEX {connection_id}: Failed to send Pong: {e}");
                                     }
                                 },
                                 Message::Pong(_) => {
-                                    debug!("LBKEX {}: Received Pong", connection_id);
+                                    debug!("LBKEX {connection_id}: Received Pong");
                                     app_state.update_connection_timestamp(&connection_id);
                                     app_state.increment_websocket_messages(1);
                                 },
@@ -345,7 +342,7 @@ pub async fn lbank_websocket_handler(
                                     app_state.increment_websocket_messages(1);
                                 },
                                 Message::Close(frame) => {
-                                    info!("LBKEX {}: Received close frame: {:?}", connection_id, frame);
+                                    info!("LBKEX {connection_id}: Received close frame: {frame:?}");
                                     break;
                                 },
                                 _ => {}
@@ -353,22 +350,22 @@ pub async fn lbank_websocket_handler(
                         },
                         Ok(Some(Err(e))) => {
                             consecutive_errors += 1;
-                            error!("LBKEX {}: WebSocket error: {}", connection_id, e);
+                            error!("LBKEX {connection_id}: WebSocket error: {e}");
                             if consecutive_errors >= 3 {
-                                error!("LBKEX {}: Too many consecutive errors, reconnecting", connection_id);
+                                error!("LBKEX {connection_id}: Too many consecutive errors, reconnecting");
                                 break;
                             }
                         },
                         Ok(None) => {
-                            info!("LBKEX {}: WebSocket stream ended", connection_id);
+                            info!("LBKEX {connection_id}: WebSocket stream ended");
                             break;
                         },
                         Err(_) => {
                             consecutive_errors += 1;
                             let idle_time = app_state.get_connection_idle_time(&connection_id);
-                            warn!("LBKEX {}: Read timeout - idle for {}ms", connection_id, idle_time);
+                            warn!("LBKEX {connection_id}: Read timeout - idle for {idle_time}ms");
                             if consecutive_errors >= 3 {
-                                error!("LBKEX {}: Too many timeouts, reconnecting", connection_id);
+                                error!("LBKEX {connection_id}: Too many timeouts, reconnecting");
                                 break;
                             }
                         }
@@ -376,26 +373,26 @@ pub async fn lbank_websocket_handler(
 
                     let idle_time = app_state.get_connection_idle_time(&connection_id);
                     if idle_time > FORCE_RECONNECT_TIMEOUT as u64 {
-                        error!("LBKEX {}: Connection stale ({}ms), forcing reconnect", connection_id, idle_time);
+                        error!("LBKEX {connection_id}: Connection stale ({idle_time}ms), forcing reconnect");
                         break;
                     }
                 }
 
                 ping_task.abort();
-                error!("LBKEX {}: WebSocket session ended, reconnecting...", connection_id);
+                error!("LBKEX {connection_id}: WebSocket session ended, reconnecting...");
             },
             Err(e) => {
-                error!("LBKEX {}: Failed to connect: {}", connection_id, e);
+                error!("LBKEX {connection_id}: Failed to connect: {e}");
             }
         }
 
         retry_count += 1;
-        let delay = f64::min(0.3 * 1.5f64.powi(retry_count as i32), 3.0);
-        info!("LBKEX {}: Reconnecting in {:.2} seconds (attempt {}/{})", connection_id, delay, retry_count, max_retries);
+        let delay = f64::min(0.3 * 1.5f64.powi(retry_count), 3.0);
+        info!("LBKEX {connection_id}: Reconnecting in {delay:.2} seconds (attempt {retry_count}/{max_retries})");
         app_state.update_connection_timestamp(&connection_id);
         sleep(Duration::from_secs_f64(delay)).await;
     }
 
-    error!("LBKEX {}: Failed to maintain connection after {} retries", connection_id, max_retries);
+    error!("LBKEX {connection_id}: Failed to maintain connection after {max_retries} retries");
     Ok(())
 }

@@ -18,7 +18,7 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use log::{info, warn, error, debug};
+use log::{info, error, debug};
 use chrono::{DateTime, Utc};
 use futures_util::{SinkExt, StreamExt, stream::{SplitSink}};
 
@@ -196,10 +196,10 @@ impl BinanceFuturesWebSocketHandler {
             BINANCE_FUTURES_WS_URL
         };
         
-        info!("正在连接Binance期货WebSocket: {}", ws_url);
+        info!("正在连接Binance期货WebSocket: {ws_url}");
         
         let (ws_stream, _) = connect_async(ws_url).await
-            .map_err(|e| AppError::WebSocketError(format!("连接失败: {}", e)))?;
+            .map_err(|e| AppError::WebSocketError(format!("连接失败: {e}")))?;
         
         self.ws_stream = Some(ws_stream);
         *self.is_connected.write().await = true;
@@ -274,7 +274,7 @@ impl BinanceFuturesWebSocketHandler {
         if let Some(ref ws_sink) = self.ws_sink {
             let mut sink = ws_sink.lock().await;
             sink.send(Message::Text(subscribe_msg.to_string())).await
-                .map_err(|e| AppError::WebSocketError(format!("发送订阅消息失败: {}", e)))?;
+                .map_err(|e| AppError::WebSocketError(format!("发送订阅消息失败: {e}")))?;
         }
         
         // 记录订阅信息
@@ -287,7 +287,7 @@ impl BinanceFuturesWebSocketHandler {
         
         self.subscriptions.write().await.insert(stream_name.to_string(), subscription_info);
         
-        info!("已订阅期货流: {} ({})", stream_name, symbol);
+        info!("已订阅期货流: {stream_name} ({symbol})");
         Ok(())
     }
     
@@ -306,13 +306,13 @@ impl BinanceFuturesWebSocketHandler {
         if let Some(ref ws_sink) = self.ws_sink {
             let mut sink = ws_sink.lock().await;
             sink.send(Message::Text(unsubscribe_msg.to_string())).await
-                .map_err(|e| AppError::WebSocketError(format!("发送取消订阅消息失败: {}", e)))?;
+                .map_err(|e| AppError::WebSocketError(format!("发送取消订阅消息失败: {e}")))?;
         }
         
         // 移除订阅信息
         self.subscriptions.write().await.remove(stream_name);
         
-        info!("已取消订阅期货流: {}", stream_name);
+        info!("已取消订阅期货流: {stream_name}");
         Ok(())
     }
     
@@ -378,14 +378,14 @@ impl BinanceFuturesWebSocketHandler {
                             &account_sender,
                             &subscriptions,
                         ).await {
-                            error!("处理WebSocket消息失败: {:?}", e);
+                            error!("处理WebSocket消息失败: {e:?}");
                         }
                     }
                     Ok(Message::Ping(payload)) => {
                         use futures_util::SinkExt;
                         let mut sink = ws_sink.lock().await;
                         if let Err(e) = sink.send(Message::Pong(payload)).await {
-                            error!("发送Pong消息失败: {:?}", e);
+                            error!("发送Pong消息失败: {e:?}");
                             break;
                         }
                     }
@@ -394,7 +394,7 @@ impl BinanceFuturesWebSocketHandler {
                         break;
                     }
                     Err(e) => {
-                        error!("WebSocket错误: {:?}", e);
+                        error!("WebSocket错误: {e:?}");
                         break;
                     }
                     _ => {}
@@ -416,23 +416,23 @@ impl BinanceFuturesWebSocketHandler {
         _account_sender: &Option<mpsc::UnboundedSender<AccountEvent>>,
         _subscriptions: &Arc<RwLock<HashMap<String, SubscriptionInfo>>>,
     ) -> Result<()> {
-        debug!("收到WebSocket消息: {}", text);
+        debug!("收到WebSocket消息: {text}");
         
         let msg: Value = serde_json::from_str(text)
-            .map_err(|e| AppError::ParseError(format!("解析JSON失败: {}", e)))?;
+            .map_err(|e| AppError::ParseError(format!("解析JSON失败: {e}")))?;
         
         // 检查是否是订阅确认消息
         if msg.get("result").is_some() {
-            debug!("收到订阅确认: {:?}", msg);
+            debug!("收到订阅确认: {msg:?}");
             return Ok(());
         }
         
         // 处理流数据
         if let Some(stream) = msg.get("stream").and_then(|s| s.as_str()) {
-            debug!("处理流数据: {}", stream);
+            debug!("处理流数据: {stream}");
             if let Some(data) = msg.get("data") {
                 if stream.contains("@depth") {
-                    debug!("处理深度数据: {:?}", data);
+                    debug!("处理深度数据: {data:?}");
                     Self::process_depth_data(stream, data, data_sender).await?;
                 } else if stream.contains("@aggTrade") {
                     // TODO: 处理交易数据
@@ -446,7 +446,7 @@ impl BinanceFuturesWebSocketHandler {
             }
         } else {
             // 可能是直接的深度数据格式
-            debug!("检查是否为直接深度数据格式: {:?}", msg);
+            debug!("检查是否为直接深度数据格式: {msg:?}");
             if msg.get("e").and_then(|e| e.as_str()) == Some("depthUpdate") {
                 debug!("处理直接深度更新数据");
                 Self::process_direct_depth_data(&msg, data_sender).await?;
@@ -514,7 +514,7 @@ impl BinanceFuturesWebSocketHandler {
             let market_event = MarketDataEvent::DepthUpdate(depth_update);
             
             if let Err(e) = sender.send(market_event) {
-                error!("发送深度数据失败: {:?}", e);
+                error!("发送深度数据失败: {e:?}");
             }
         }
         
@@ -586,9 +586,9 @@ impl BinanceFuturesWebSocketHandler {
             let market_event = MarketDataEvent::DepthUpdate(depth_update);
             
             if let Err(e) = sender.send(market_event) {
-                error!("发送深度数据失败: {:?}", e);
+                error!("发送深度数据失败: {e:?}");
             } else {
-                debug!("成功发送深度数据: {} bids, {} asks", bids_len, asks_len);
+                debug!("成功发送深度数据: {bids_len} bids, {asks_len} asks");
             }
         }
         

@@ -15,6 +15,10 @@ pub struct OrderRequest {
     pub price: Option<f64>, // 市价单时为None
     pub time_in_force: TimeInForce,
     pub client_order_id: Option<String>,
+    // 期货交易专用字段
+    pub reduce_only: Option<bool>,
+    pub close_position: Option<bool>,
+    pub position_side: Option<PositionSide>,
 }
 
 /// 订单响应

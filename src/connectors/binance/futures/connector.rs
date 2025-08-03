@@ -2,7 +2,7 @@
 //! 
 //! 整合WebSocket、REST API和消息解析功能，实现完整的期货连接器
 
-use crate::connectors::binance::futures::config::{BinanceFuturesConfig, MarginType as ConfigMarginType, PositionMode, PositionSide};
+use crate::connectors::binance::futures::config::{BinanceFuturesConfig, MarginType as ConfigMarginType};
 use crate::connectors::binance::futures::websocket::*;
 use crate::connectors::binance::futures::rest_api::{BinanceFuturesRestClient, MarginType as RestMarginType};
 use crate::connectors::binance::futures::message_parser::*;
@@ -14,11 +14,10 @@ use crate::core::AppError;
 pub type Result<T> = std::result::Result<T, AppError>;
 
 use tokio::sync::{mpsc, RwLock};
-use tokio_tungstenite::tungstenite::Message;
-use futures_util::{StreamExt, SinkExt};
+use futures_util::StreamExt;
 use std::sync::Arc;
 use std::collections::HashMap;
-use log::{info, warn, error, debug};
+use log::{info, warn};
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 
@@ -143,7 +142,7 @@ impl BinanceFuturesConnector {
                 info!("Binance期货WebSocket连接成功");
             }
             Err(e) => {
-                let error_msg = format!("WebSocket连接失败: {}", e);
+                let error_msg = format!("WebSocket连接失败: {e}");
                 *self.connection_state.write().await = ConnectionState::Error(error_msg.clone());
                 return Err(AppError::ConnectionError(error_msg));
             }
@@ -157,7 +156,7 @@ impl BinanceFuturesConnector {
                     info!("用户数据流启动成功");
                 }
                 Err(e) => {
-                    warn!("用户数据流启动失败: {}", e);
+                    warn!("用户数据流启动失败: {e}");
                 }
             }
         }
@@ -166,7 +165,7 @@ impl BinanceFuturesConnector {
         let symbols = self.config.subscribed_symbols.clone();
         for symbol in &symbols {
             if let Err(e) = self.subscribe_symbol_data(symbol).await {
-                warn!("订阅{}数据失败: {}", symbol, e);
+                warn!("订阅{symbol}数据失败: {e}");
             }
         }
         
@@ -180,7 +179,7 @@ impl BinanceFuturesConnector {
         // 关闭用户数据流
         if let Some(listen_key) = self.listen_key.read().await.as_ref() {
             if let Err(e) = self.rest_client.close_user_data_stream(listen_key).await {
-                warn!("关闭用户数据流失败: {}", e);
+                warn!("关闭用户数据流失败: {e}");
             }
         }
         
@@ -208,7 +207,7 @@ impl BinanceFuturesConnector {
     
     /// 订阅交易对的所有数据
     pub async fn subscribe_symbol_data(&mut self, symbol: &str) -> Result<()> {
-        info!("订阅{}的期货数据", symbol);
+        info!("订阅{symbol}的期货数据");
         
         // 订阅深度数据
         self.ws_handler.subscribe_depth(symbol, Some(20)).await?;
@@ -232,13 +231,13 @@ impl BinanceFuturesConnector {
             error_count: 0,
         });
         
-        info!("{}期货数据订阅成功", symbol);
+        info!("{symbol}期货数据订阅成功");
         Ok(())
     }
     
     /// 取消订阅交易对数据
     pub async fn unsubscribe_symbol_data(&mut self, symbol: &str) -> Result<()> {
-        info!("取消订阅{}的期货数据", symbol);
+        info!("取消订阅{symbol}的期货数据");
         
         // 取消各种数据订阅
         let depth_stream = format!("{}@depth20@100ms", symbol.to_lowercase());
@@ -254,7 +253,7 @@ impl BinanceFuturesConnector {
         // 更新订阅状态
         self.subscriptions.write().await.remove(symbol);
         
-        info!("{}期货数据取消订阅成功", symbol);
+        info!("{symbol}期货数据取消订阅成功");
         Ok(())
     }
     
@@ -290,7 +289,7 @@ impl BinanceFuturesConnector {
         let heartbeat_timeout = chrono::Duration::seconds(30);
         
         if now - last_heartbeat > heartbeat_timeout {
-            warn!("心跳超时，最后心跳时间: {}", last_heartbeat);
+            warn!("心跳超时，最后心跳时间: {last_heartbeat}");
             return false;
         }
         

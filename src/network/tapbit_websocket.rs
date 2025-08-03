@@ -28,13 +28,13 @@ const TAPBIT_REQUEST_PATH: &str = "/stream/ws";
 /// Generate HMAC-SHA256 signature for TapBit API
 fn generate_tapbit_signature(timestamp: &str, method: &str, request_path: &str, body: &str) -> Result<String, AppError> {
     // Concatenate the parameters - this is the format that TapBit requires
-    let message = format!("{}{}{}{}", timestamp, method, request_path, body);
+    let message = format!("{timestamp}{method}{request_path}{body}");
     
-    info!("Signature input: {}", message);
+    info!("Signature input: {message}");
     
     // Create HMAC-SHA256 instance
     let mut mac = Hmac::<Sha256>::new_from_slice(TAPBIT_API_SECRET.as_bytes())
-        .map_err(|e| AppError::Other(format!("Failed to create HMAC: {}", e)))?;
+        .map_err(|e| AppError::Other(format!("Failed to create HMAC: {e}")))?;
     
     // Update with message
     mac.update(message.as_bytes());
@@ -60,7 +60,7 @@ pub async fn tapbit_websocket_handler(
     let max_retries = 10;
 
     while retry_count < max_retries {
-        info!("TapBit {}: Connecting to {}", connection_id, TAPBIT_WS_URL);
+        info!("TapBit {connection_id}: Connecting to {TAPBIT_WS_URL}");
         
         // Create request with authentication headers
         let timestamp = format!("{:.3}", chrono::Utc::now().timestamp_millis() as f64 / 1000.0);
@@ -71,12 +71,11 @@ pub async fn tapbit_websocket_handler(
         // Create HMAC-SHA256 signature
         let signature = generate_tapbit_signature(&timestamp, method, request_path, body)?;
         
-        info!("TapBit {}: Generated authentication timestamp: {}, signature: {}", 
-             connection_id, timestamp, signature);
+        info!("TapBit {connection_id}: Generated authentication timestamp: {timestamp}, signature: {signature}");
         
         // Add authentication headers
         let mut request = TAPBIT_WS_URL.into_client_request()
-            .map_err(|e| AppError::WebSocketError(format!("Failed to create request: {}", e)))?;
+            .map_err(|e| AppError::WebSocketError(format!("Failed to create request: {e}")))?;
 
         request.headers_mut().insert(
             "ACCESS-KEY", 
@@ -106,16 +105,16 @@ pub async fn tapbit_websocket_handler(
         
         // Log the full request headers for debugging
         let headers_debug = request.headers().iter()
-            .map(|(name, value)| format!("{}={:?}", name, value))
+            .map(|(name, value)| format!("{name}={value:?}"))
             .collect::<Vec<String>>()
             .join(", ");
         
-        info!("TapBit {}: Connection request headers: {}", connection_id, headers_debug);
+        info!("TapBit {connection_id}: Connection request headers: {headers_debug}");
         
         // Connect with timeout
         match timeout(Duration::from_secs(15), connect_async(request)).await {
             Ok(Ok((ws_stream, _))) => {
-                info!("TapBit {}: Connection established", connection_id);
+                info!("TapBit {connection_id}: Connection established");
                 app_state.update_connection_timestamp(&connection_id);
                 let (write, mut read) = ws_stream.split();
                 let write = Arc::new(Mutex::new(write));
@@ -139,7 +138,7 @@ pub async fn tapbit_websocket_handler(
                         
                         // Topic format: "usdt/orderBook.{instrument_id}.[depth]"
                         // Using depth 5 for efficiency
-                        args.push(format!("usdt/orderBook.{}.5", tapbit_symbol));
+                        args.push(format!("usdt/orderBook.{tapbit_symbol}.5"));
                     }
                     
                     if !args.is_empty() {
@@ -150,14 +149,14 @@ pub async fn tapbit_websocket_handler(
                         });
                         
                         info!("TapBit {}: Subscribing batch {} with {} symbols: {}", 
-                            connection_id, subscription_count + 1, args.len(), sub_msg.to_string());
+                            connection_id, subscription_count + 1, args.len(), sub_msg);
                         
                         let mut writer = write.lock().await;
                         if let Err(e) = writer.send(Message::Text(sub_msg.to_string())).await {
-                            error!("TapBit {}: Failed to send subscription: {}", connection_id, e);
+                            error!("TapBit {connection_id}: Failed to send subscription: {e}");
                             break;
                         } else {
-                            info!("TapBit {}: Subscription sent successfully", connection_id);
+                            info!("TapBit {connection_id}: Subscription sent successfully");
                             subscription_count += 1;
                         }
                         
@@ -173,7 +172,7 @@ pub async fn tapbit_websocket_handler(
                 
                 loop {
                     if app_state.should_reconnect(&connection_id) {
-                        error!("TapBit {}: Reconnection signaled, breaking main loop", connection_id);
+                        error!("TapBit {connection_id}: Reconnection signaled, breaking main loop");
                         break;
                     }
                     
@@ -191,24 +190,23 @@ pub async fn tapbit_websocket_handler(
                             
                             // Handle ping message (TapBit sends "ping" text frames)
                             if text == "ping" {
-                                debug!("TapBit {}: Received ping, sending pong", connection_id);
+                                debug!("TapBit {connection_id}: Received ping, sending pong");
                                 let mut writer = write.lock().await;
                                 if let Err(e) = writer.send(Message::Text("pong".to_string())).await {
-                                    error!("TapBit {}: Failed to send pong: {}", connection_id, e);
+                                    error!("TapBit {connection_id}: Failed to send pong: {e}");
                                 }
                                 continue;
                             }
                             
                             // Log the received message for debugging
-                            debug!("TapBit {}: Received message: {}", connection_id, text);
+                            debug!("TapBit {connection_id}: Received message: {text}");
                             
                             // Process the message as orderbook data
                             if let Ok(json_msg) = serde_json::from_str::<Value>(&text) {
                                 // Check for error response
                                 if let Some(code) = json_msg.get("code") {
                                     let error_msg = json_msg.get("msg").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-                                    error!("TapBit {}: Error response: code={}, msg={}", 
-                                          connection_id, code, error_msg);
+                                    error!("TapBit {connection_id}: Error response: code={code}, msg={error_msg}");
                                     continue;
                                 }
                                 
@@ -294,8 +292,7 @@ pub async fn tapbit_websocket_handler(
                                                             
                                                             // Check if we have valid data
                                                             if best_bid > 0.0 && best_ask > 0.0 {
-                                                                info!("TapBit {}: Valid orderbook update for {}: ask={}, bid={}", 
-                                                                     connection_id, prefixed_symbol, best_ask, best_bid);
+                                                                info!("TapBit {connection_id}: Valid orderbook update for {prefixed_symbol}: ask={best_ask}, bid={best_bid}");
                                                                 
                                                                 // Get scale (default to 8 if not found)
                                                                 let scale = app_state.price_scales.get(&normalized_symbol)
@@ -318,7 +315,7 @@ pub async fn tapbit_websocket_handler(
                                                                     };
                                                                     
                                                                     if let Err(e) = tx.send(update) {
-                                                                        error!("TapBit {}: Failed to send orderbook update: {}", connection_id, e);
+                                                                        error!("TapBit {connection_id}: Failed to send orderbook update: {e}");
                                                                     }
                                                                 } else {
                                                                     app_state.price_data.insert(
@@ -355,7 +352,7 @@ pub async fn tapbit_websocket_handler(
                             
                             let mut writer = write.lock().await;
                             if let Err(e) = writer.send(Message::Pong(data)).await {
-                                error!("TapBit {}: Failed to send Pong: {}", connection_id, e);
+                                error!("TapBit {connection_id}: Failed to send Pong: {e}");
                             }
                         },
                         Ok(Some(Ok(msg))) => {
@@ -370,10 +367,10 @@ pub async fn tapbit_websocket_handler(
                                     debug!("TapBit {}: Received binary data ({} bytes)", connection_id, data.len());
                                 },
                                 Message::Pong(_) => {
-                                    debug!("TapBit {}: Received Pong", connection_id);
+                                    debug!("TapBit {connection_id}: Received Pong");
                                 },
                                 Message::Close(frame) => {
-                                    info!("TapBit {}: Received Close frame: {:?}", connection_id, frame);
+                                    info!("TapBit {connection_id}: Received Close frame: {frame:?}");
                                     break;
                                 },
                                 _ => {}
@@ -381,32 +378,32 @@ pub async fn tapbit_websocket_handler(
                         },
                         Ok(Some(Err(e))) => {
                             consecutive_errors += 1;
-                            error!("TapBit {}: WebSocket error: {}", connection_id, e);
+                            error!("TapBit {connection_id}: WebSocket error: {e}");
                             if consecutive_errors >= 3 {
-                                error!("TapBit {}: Too many consecutive errors, reconnecting", connection_id);
+                                error!("TapBit {connection_id}: Too many consecutive errors, reconnecting");
                                 break;
                             }
                         },
                         Ok(None) => {
-                            info!("TapBit {}: WebSocket stream ended", connection_id);
+                            info!("TapBit {connection_id}: WebSocket stream ended");
                             break;
                         },
                         Err(_) => {
                             consecutive_timeouts += 1;
                             let idle_time = app_state.get_connection_idle_time(&connection_id);
-                            warn!("TapBit {}: Read timeout - idle for {}ms", connection_id, idle_time);
+                            warn!("TapBit {connection_id}: Read timeout - idle for {idle_time}ms");
                             
                             // Send pong message to keep connection alive
                             if consecutive_timeouts == 1 {
-                                warn!("TapBit {}: Sending emergency pong", connection_id);
+                                warn!("TapBit {connection_id}: Sending emergency pong");
                                 let mut writer = write.lock().await;
                                 if let Err(e) = writer.send(Message::Text("pong".to_string())).await {
-                                    error!("TapBit {}: Failed to send pong: {}", connection_id, e);
+                                    error!("TapBit {connection_id}: Failed to send pong: {e}");
                                 }
                             }
                             
                             if consecutive_timeouts >= 3 {
-                                error!("TapBit {}: Too many consecutive timeouts, reconnecting", connection_id);
+                                error!("TapBit {connection_id}: Too many consecutive timeouts, reconnecting");
                                 break;
                             }
                         }
@@ -415,7 +412,7 @@ pub async fn tapbit_websocket_handler(
                     // Check connection staleness
                     let idle_time = app_state.get_connection_idle_time(&connection_id);
                     if idle_time > FORCE_RECONNECT_TIMEOUT as u64 {
-                        error!("TapBit {}: Connection stale ({}ms), forcing reconnect", connection_id, idle_time);
+                        error!("TapBit {connection_id}: Connection stale ({idle_time}ms), forcing reconnect");
                         break;
                     }
                     
@@ -425,20 +422,20 @@ pub async fn tapbit_websocket_handler(
                     }
                 }
                 
-                error!("TapBit {}: Session ended, reconnecting...", connection_id);
+                error!("TapBit {connection_id}: Session ended, reconnecting...");
             },
             Ok(Err(e)) => {
-                error!("TapBit {}: Failed to connect: {}", connection_id, e);
+                error!("TapBit {connection_id}: Failed to connect: {e}");
                 retry_count += 1;
             },
             Err(_) => {
-                error!("TapBit {}: Connection timeout", connection_id);
+                error!("TapBit {connection_id}: Connection timeout");
                 retry_count += 1;
             }
         }
         
         // Handle reconnection with exponential backoff
-        let delay = f64::min(0.5 * 1.5f64.powi(retry_count as i32), MAX_RECONNECT_DELAY);
+        let delay = f64::min(0.5 * 1.5f64.powi(retry_count), MAX_RECONNECT_DELAY);
         
         info!("TapBit {}: Reconnecting in {:.2} seconds (attempt {}/{})", 
              connection_id, delay, retry_count + 1, max_retries);
@@ -448,7 +445,7 @@ pub async fn tapbit_websocket_handler(
         retry_count += 1;
     }
     
-    error!("TapBit {}: Failed to maintain connection after {} retries", connection_id, max_retries);
+    error!("TapBit {connection_id}: Failed to maintain connection after {max_retries} retries");
     Ok(())
 }
 

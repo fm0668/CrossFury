@@ -25,7 +25,7 @@ pub async fn okx_futures_websocket_handler(
     loop {
         match connect_async(ws_url).await {
             Ok((ws_stream, _)) => {
-                info!("OKX_FUTURES {}: Connected successfully", connection_id);
+                info!("OKX_FUTURES {connection_id}: Connected successfully");
                 let (mut write, mut read) = ws_stream.split();
 
                 // Subscribe to orderbook data for all symbols
@@ -43,7 +43,7 @@ pub async fn okx_futures_websocket_handler(
                 });
 
                 if let Err(e) = write.send(Message::Text(subscribe_msg.to_string())).await {
-                    error!("OKX_FUTURES {}: Failed to subscribe: {}", connection_id, e);
+                    error!("OKX_FUTURES {connection_id}: Failed to subscribe: {e}");
                 }
                 
                 // Process incoming messages
@@ -58,7 +58,7 @@ pub async fn okx_futures_websocket_handler(
                             let _ = write.send(Message::Pong(payload)).await;
                         }
                         Err(e) => {
-                            error!("OKX_FUTURES {}: WebSocket error: {}", connection_id, e);
+                            error!("OKX_FUTURES {connection_id}: WebSocket error: {e}");
                             break;
                         }
                         _ => {}
@@ -66,7 +66,7 @@ pub async fn okx_futures_websocket_handler(
                 }
             }
             Err(e) => {
-                error!("OKX_FUTURES {}: Connection failed: {}", connection_id, e);
+                error!("OKX_FUTURES {connection_id}: Connection failed: {e}");
                 sleep(Duration::from_secs(5)).await;
             }
         }
@@ -82,10 +82,10 @@ async fn process_okx_futures_message(
     // Handle subscription confirmation
     if let Some(event) = data.get("event").and_then(|e| e.as_str()) {
         if event == "subscribe" {
-            debug!("OKX_FUTURES {}: Subscription confirmed", connection_id);
+            debug!("OKX_FUTURES {connection_id}: Subscription confirmed");
         } else if event == "error" {
             if let Some(msg) = data.get("msg") {
-                error!("OKX_FUTURES {}: Error: {}", connection_id, msg);
+                error!("OKX_FUTURES {connection_id}: Error: {msg}");
             }
         }
         return;
@@ -139,7 +139,7 @@ async fn process_okx_depth_update(
 
             if let Some(tx) = &app_state.orderbook_queue {
                 if let Err(e) = tx.send(update) {
-                    error!("OKX_FUTURES {}: Failed to send update: {}", connection_id, e);
+                    error!("OKX_FUTURES {connection_id}: Failed to send update: {e}");
                 }
             }
         }

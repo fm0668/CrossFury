@@ -189,6 +189,9 @@ mod tests {
             price: Some(50000.0),
             time_in_force: TimeInForce::GTC,
             client_order_id: Some("test_order".to_string()),
+            reduce_only: Some(false),
+            close_position: Some(false),
+            position_side: Some(crate::types::orders::PositionSide::Both),
         };
         
         let result = connector.place_order(&order).await;

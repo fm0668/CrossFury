@@ -29,11 +29,11 @@ pub async fn xtcom_websocket_handler(
     let max_retries = 15; 
 
     while retry_count < max_retries {
-        info!("XT.COM {}: Connecting to {}", connection_id, XTCOM_WS_URL);
+        info!("XT.COM {connection_id}: Connecting to {XTCOM_WS_URL}");
         
         // Create request with required headers
         let mut request = XTCOM_WS_URL.into_client_request()
-            .map_err(|e| AppError::WebSocketError(format!("Failed to create request: {}", e)))?;
+            .map_err(|e| AppError::WebSocketError(format!("Failed to create request: {e}")))?;
         
         // Add required permessage-deflate header for XT.COM
         request.headers_mut().insert(
@@ -48,7 +48,7 @@ pub async fn xtcom_websocket_handler(
         // Connect with timeout
         match timeout(Duration::from_secs(15), connect_async(request)).await {
             Ok(Ok((ws_stream, _))) => {
-                info!("XT.COM {}: Connection established", connection_id);
+                info!("XT.COM {connection_id}: Connection established");
                 app_state.update_connection_timestamp(&connection_id);
                 let (write, mut read) = ws_stream.split();
                 let write = Arc::new(Mutex::new(write));
@@ -67,31 +67,30 @@ pub async fn xtcom_websocket_handler(
                         interval.tick().await;
                         
                         if ping_app_state.should_reconnect(&ping_connection_id) {
-                            error!("XT.COM {}: Reconnection signaled, terminating ping task", ping_connection_id);
+                            error!("XT.COM {ping_connection_id}: Reconnection signaled, terminating ping task");
                             return;
                         }
                         
                         // Send simple text "ping" as per XT.COM documentation
-                        info!("XT.COM {}: Sending heartbeat ping", ping_connection_id);
+                        info!("XT.COM {ping_connection_id}: Sending heartbeat ping");
                         ping_app_state.update_connection_timestamp(&ping_connection_id);
                         
                         let mut writer = write_clone.lock().await;
                         // Send plain "ping" text, not JSON
                         if let Err(e) = writer.send(Message::Text("ping".to_string())).await {
-                            error!("XT.COM {}: Failed to send ping: {}", ping_connection_id, e);
+                            error!("XT.COM {ping_connection_id}: Failed to send ping: {e}");
                             break;
                         }
                         
                         // Check if connection is stale
                         let idle_time = ping_app_state.get_connection_idle_time(&ping_connection_id);
                         if idle_time > STALE_CONNECTION_TIMEOUT as u64 {
-                            error!("XT.COM {}: Connection stale for {}ms, terminating ping task", 
-                                  ping_connection_id, idle_time);
+                            error!("XT.COM {ping_connection_id}: Connection stale for {idle_time}ms, terminating ping task");
                             break;
                         }
                     }
                     
-                    warn!("XT.COM {}: Ping task terminated", ping_connection_id);
+                    warn!("XT.COM {ping_connection_id}: Ping task terminated");
                 });
 
                 // Subscribe to symbols in batches to avoid overwhelming the server
@@ -116,7 +115,7 @@ pub async fn xtcom_websocket_handler(
                             for &quote in &quote_currencies {
                                 if symbol_lower.ends_with(quote) {
                                     let base = &symbol_lower[..symbol_lower.len() - quote.len()];
-                                    symbol_lower = format!("{}_{}",  base, quote);
+                                    symbol_lower = format!("{base}_{quote}");
                                     break;
                                 }
                             }
@@ -125,7 +124,7 @@ pub async fn xtcom_websocket_handler(
                         
                         // CRITICAL FIX: Use exact format from documentation: depth_update@{symbol},{interval}
                         // Only use valid intervals: 100/250/500/1000ms
-                        params.push(format!("depth_update@{},100ms", xtcom_symbol));
+                        params.push(format!("depth_update@{xtcom_symbol},100ms"));
                     }
                     
                     if !params.is_empty() {
@@ -137,14 +136,14 @@ pub async fn xtcom_websocket_handler(
                         });
                         
                         info!("XT.COM {}: Subscribing batch {} with {} symbols: {}", 
-                            connection_id, subscription_count + 1, params.len(), sub_req.to_string());
+                            connection_id, subscription_count + 1, params.len(), sub_req);
                         
                         let mut writer = write.lock().await;
                         if let Err(e) = writer.send(Message::Text(sub_req.to_string())).await {
-                            error!("XT.COM {}: Failed to send subscription: {}", connection_id, e);
+                            error!("XT.COM {connection_id}: Failed to send subscription: {e}");
                             break;
                         } else {
-                            info!("XT.COM {}: Subscription sent successfully", connection_id);
+                            info!("XT.COM {connection_id}: Subscription sent successfully");
                             subscription_count += 1;
                         }
                         
@@ -160,7 +159,7 @@ pub async fn xtcom_websocket_handler(
                 
                 loop {
                     if app_state.should_reconnect(&connection_id) {
-                        error!("XT.COM {}: Reconnection signaled, breaking main loop", connection_id);
+                        error!("XT.COM {connection_id}: Reconnection signaled, breaking main loop");
                         break;
                     }
                     
@@ -175,7 +174,7 @@ pub async fn xtcom_websocket_handler(
                             
                             // Handle plain text "pong" response
                             if text == "pong" {
-                                debug!("XT.COM {}: Received pong response", connection_id);
+                                debug!("XT.COM {connection_id}: Received pong response");
                                 app_state.update_connection_timestamp(&connection_id);
                                 continue;
                             }
@@ -267,13 +266,11 @@ pub async fn xtcom_websocket_handler(
                                                     
                                                     // Skip if prices are invalid
                                                     if best_ask <= 0.0 || best_bid <= 0.0 {
-                                                        debug!("XT.COM {}: Invalid prices for {}: ask={}, bid={}", 
-                                                            connection_id, symbol_str, best_ask, best_bid);
+                                                        debug!("XT.COM {connection_id}: Invalid prices for {symbol_str}: ask={best_ask}, bid={best_bid}");
                                                         continue;
                                                     }
                                                     
-                                                    info!("XT.COM {}: Received valid orderbook update for {}: ask={}, bid={}", 
-                                                        connection_id, prefixed_symbol, best_ask, best_bid);
+                                                    info!("XT.COM {connection_id}: Received valid orderbook update for {prefixed_symbol}: ask={best_ask}, bid={best_bid}");
                                                     
                                                     // Update price data
                                                     let current_time = chrono::Utc::now().timestamp_millis();
@@ -292,11 +289,9 @@ pub async fn xtcom_websocket_handler(
                                                         };
                                                         
                                                         if let Err(e) = tx.send(update) {
-                                                            error!("XT.COM {}: Failed to send orderbook update: {}", 
-                                                                connection_id, e);
+                                                            error!("XT.COM {connection_id}: Failed to send orderbook update: {e}");
                                                         } else {
-                                                            debug!("XT.COM {}: Enqueued price update for {}: ask={}, bid={}", 
-                                                                connection_id, prefixed_symbol, best_ask, best_bid);
+                                                            debug!("XT.COM {connection_id}: Enqueued price update for {prefixed_symbol}: ask={best_ask}, bid={best_bid}");
                                                         }
                                                     } else {
                                                         app_state.price_data.insert(
@@ -334,21 +329,21 @@ pub async fn xtcom_websocket_handler(
                                     debug!("XT.COM {}: Received binary data ({} bytes)", connection_id, data.len());
                                 },
                                 Message::Ping(data) => {
-                                    debug!("XT.COM {}: Received Ping, sending Pong", connection_id);
+                                    debug!("XT.COM {connection_id}: Received Ping, sending Pong");
                                     let mut writer = write.lock().await;
                                     if let Err(e) = writer.send(Message::Pong(data)).await {
-                                        error!("XT.COM {}: Failed to send Pong: {}", connection_id, e);
+                                        error!("XT.COM {connection_id}: Failed to send Pong: {e}");
                                     }
                                 },
                                 Message::Pong(_) => {
-                                    debug!("XT.COM {}: Received Pong", connection_id);
+                                    debug!("XT.COM {connection_id}: Received Pong");
                                 },
                                 Message::Close(frame) => {
-                                    info!("XT.COM {}: Received Close frame: {:?}", connection_id, frame);
+                                    info!("XT.COM {connection_id}: Received Close frame: {frame:?}");
                                     break;
                                 },
                                 _ => {
-                                    debug!("XT.COM {}: Received other message type", connection_id);
+                                    debug!("XT.COM {connection_id}: Received other message type");
                                 }
                             }
                         },
@@ -358,51 +353,51 @@ pub async fn xtcom_websocket_handler(
                             // Different handling based on error type
                             match &e {
                                 WsError::ConnectionClosed => {
-                                    error!("XT.COM {}: Connection closed", connection_id);
+                                    error!("XT.COM {connection_id}: Connection closed");
                                     break;
                                 },
                                 WsError::AlreadyClosed => {
-                                    error!("XT.COM {}: Connection already closed", connection_id);
+                                    error!("XT.COM {connection_id}: Connection already closed");
                                     break;
                                 },
                                 WsError::Protocol(_) => {
-                                    error!("XT.COM {}: Protocol error: {}", connection_id, e);
+                                    error!("XT.COM {connection_id}: Protocol error: {e}");
                                     if consecutive_errors >= 2 {
-                                        error!("XT.COM {}: Multiple protocol errors, reconnecting", connection_id);
+                                        error!("XT.COM {connection_id}: Multiple protocol errors, reconnecting");
                                         break;
                                     }
                                 },
                                 _ => {
-                                    error!("XT.COM {}: WebSocket error: {}", connection_id, e);
+                                    error!("XT.COM {connection_id}: WebSocket error: {e}");
                                     if consecutive_errors >= 3 {
-                                        error!("XT.COM {}: Too many consecutive errors, reconnecting", connection_id);
+                                        error!("XT.COM {connection_id}: Too many consecutive errors, reconnecting");
                                         break;
                                     }
                                 }
                             }
                         },
                         Ok(None) => {
-                            info!("XT.COM {}: WebSocket stream ended", connection_id);
+                            info!("XT.COM {connection_id}: WebSocket stream ended");
                             break;
                         },
                         Err(_) => {
                             consecutive_timeouts += 1;
                             let idle_time = app_state.get_connection_idle_time(&connection_id);
-                            warn!("XT.COM {}: Read timeout - idle for {}ms", connection_id, idle_time);
+                            warn!("XT.COM {connection_id}: Read timeout - idle for {idle_time}ms");
                             
                             // Try to send a ping to keep the connection alive
                             if consecutive_timeouts == 1 {
                                 // Try to send an emergency ping
-                                warn!("XT.COM {}: Sending emergency ping", connection_id);
+                                warn!("XT.COM {connection_id}: Sending emergency ping");
                                 let mut writer = write.lock().await;
                                 // Use correct plain text "ping" format
                                 if let Err(e) = writer.send(Message::Text("ping".to_string())).await {
-                                    error!("XT.COM {}: Failed to send emergency ping: {}", connection_id, e);
+                                    error!("XT.COM {connection_id}: Failed to send emergency ping: {e}");
                                 }
                             }
                             
                             if consecutive_timeouts >= 2 {
-                                error!("XT.COM {}: Too many consecutive timeouts, reconnecting", connection_id);
+                                error!("XT.COM {connection_id}: Too many consecutive timeouts, reconnecting");
                                 break;
                             }
                         }
@@ -411,7 +406,7 @@ pub async fn xtcom_websocket_handler(
                     // Check connection staleness
                     let idle_time = app_state.get_connection_idle_time(&connection_id);
                     if idle_time > FORCE_RECONNECT_TIMEOUT as u64 {
-                        error!("XT.COM {}: Connection stale ({}ms), forcing reconnect", connection_id, idle_time);
+                        error!("XT.COM {connection_id}: Connection stale ({idle_time}ms), forcing reconnect");
                         break;
                     }
                     
@@ -423,20 +418,20 @@ pub async fn xtcom_websocket_handler(
                 
                 // Clean up the ping task
                 ping_task.abort();
-                error!("XT.COM {}: Session ended, reconnecting...", connection_id);
+                error!("XT.COM {connection_id}: Session ended, reconnecting...");
             },
             Ok(Err(e)) => {
-                error!("XT.COM {}: Failed to connect: {}", connection_id, e);
+                error!("XT.COM {connection_id}: Failed to connect: {e}");
                 retry_count += 1;
             },
             Err(_) => {
-                error!("XT.COM {}: Connection timeout", connection_id);
+                error!("XT.COM {connection_id}: Connection timeout");
                 retry_count += 1;
             }
         }
         
         // Incremental backoff
-        let delay = f64::min(0.5 * 1.5f64.powi(retry_count as i32), MAX_RECONNECT_DELAY);
+        let delay = f64::min(0.5 * 1.5f64.powi(retry_count), MAX_RECONNECT_DELAY);
         
         info!("XT.COM {}: Reconnecting in {:.2} seconds (attempt {}/{})", 
              connection_id, delay, retry_count + 1, max_retries);
@@ -446,6 +441,6 @@ pub async fn xtcom_websocket_handler(
         retry_count += 1;
     }
     
-    error!("XT.COM {}: Failed to maintain connection after {} retries", connection_id, max_retries);
+    error!("XT.COM {connection_id}: Failed to maintain connection after {max_retries} retries");
     Ok(())
 }

@@ -2,14 +2,12 @@
 //! 将现有的LBank WebSocket处理器包装成标准的ExchangeConnector接口
 
 use async_trait::async_trait;
-use log::{info, error, warn};
+use log::{info, warn};
 
 use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc, broadcast};
-use std::time::Duration;
 
 use crate::core::AppState;
-use crate::network::lbank_websocket::lbank_websocket_handler;
 use crate::connectors::traits::{ExchangeConnector, DataFlowManager};
 use crate::types::{
     config::{ConnectorConfig, ConnectionStatus, SubscriptionConfig},
@@ -109,7 +107,7 @@ impl ExchangeConnector for LBankConnector {
         
         // 调用WebSocket处理器的订阅方法
         self.websocket_handler.subscribe(vec![symbol.to_string()]).await
-            .map_err(|e| ConnectorError::SubscriptionFailed(format!("Failed to subscribe to orderbook: {}", e)))?;
+            .map_err(|e| ConnectorError::SubscriptionFailed(format!("Failed to subscribe to orderbook: {e}")))?;
         
         info!("Successfully subscribed to orderbook for {}", symbol);
         Ok(())
@@ -268,7 +266,7 @@ impl LBankConnector {
                         self.subscribe_trades(symbol).await?;
                     },
                     _ => {
-                        warn!("Unsupported data type: {:?}", data_type);
+                        warn!("Unsupported data type: {data_type:?}");
                     }
                 }
             }
@@ -281,7 +279,7 @@ impl LBankConnector {
         if let Some(orderbook) = self.get_orderbook_snapshot(symbol) {
             Ok(orderbook)
         } else {
-            Err(ConnectorError::InvalidResponse(format!("No orderbook data available for {}", symbol)))
+            Err(ConnectorError::InvalidResponse(format!("No orderbook data available for {symbol}")))
         }
     }
     

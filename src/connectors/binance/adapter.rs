@@ -5,7 +5,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc};
-use log::{info, warn, error};
+use log::{info, warn};
 
 use crate::connectors::traits::*;
 use crate::types::*;
@@ -87,20 +87,20 @@ impl ExchangeConnector for BinanceAdapter {
             self.config.clone(),
             self.app_state.clone(),
         ).await.map_err(|e| {
-            ConnectorError::ConnectionFailed(format!("创建WebSocket处理器失败: {}", e))
+            ConnectorError::ConnectionFailed(format!("创建WebSocket处理器失败: {e}"))
         })?;
         
         // 如果有待订阅的数据，先设置订阅信息
         if !symbols.is_empty() && !data_types.is_empty() {
-            info!("[Binance] 设置待订阅数据: symbols={:?}, types={:?}", symbols, data_types);
+            info!("[Binance] 设置待订阅数据: symbols={symbols:?}, types={data_types:?}");
             ws_handler.subscribe_market_data(symbols, data_types).await.map_err(|e| {
-                ConnectorError::SubscriptionFailed(format!("设置订阅失败: {}", e))
+                ConnectorError::SubscriptionFailed(format!("设置订阅失败: {e}"))
             })?;
         }
         
         // 连接WebSocket
         ws_handler.connect().await.map_err(|e| {
-            ConnectorError::ConnectionFailed(format!("WebSocket连接失败: {}", e))
+            ConnectorError::ConnectionFailed(format!("WebSocket连接失败: {e}"))
         })?;
         
         // 保存处理器实例
@@ -125,7 +125,7 @@ impl ExchangeConnector for BinanceAdapter {
         // 断开WebSocket连接
         if let Some(handler) = self.websocket_handler.write().await.take() {
             handler.disconnect().await.map_err(|e| {
-                ConnectorError::ConnectionFailed(format!("WebSocket断开失败: {}", e))
+                ConnectorError::ConnectionFailed(format!("WebSocket断开失败: {e}"))
             })?;
         }
         
@@ -148,9 +148,9 @@ impl ExchangeConnector for BinanceAdapter {
                 vec![symbol.to_string()],
                 vec![DataType::OrderBook]
             ).await.map_err(|e| {
-                ConnectorError::SubscriptionFailed(format!("订阅订单簿失败: {}", e))
+                ConnectorError::SubscriptionFailed(format!("订阅订单簿失败: {e}"))
             })?;
-            info!("[Binance] 订单簿订阅成功: {}", symbol);
+            info!("[Binance] 订单簿订阅成功: {symbol}");
             Ok(())
         } else {
             Err(ConnectorError::ConnectionFailed("WebSocket未连接".to_string()))
@@ -166,9 +166,9 @@ impl ExchangeConnector for BinanceAdapter {
                 vec![symbol.to_string()],
                 vec![DataType::Trade]
             ).await.map_err(|e| {
-                ConnectorError::SubscriptionFailed(format!("订阅交易数据失败: {}", e))
+                ConnectorError::SubscriptionFailed(format!("订阅交易数据失败: {e}"))
             })?;
-            info!("[Binance] 交易数据订阅成功: {}", symbol);
+            info!("[Binance] 交易数据订阅成功: {symbol}");
             Ok(())
         } else {
             Err(ConnectorError::ConnectionFailed("WebSocket未连接".to_string()))
@@ -195,13 +195,13 @@ impl ExchangeConnector for BinanceAdapter {
     }
     
     fn get_orderbook_snapshot(&self, symbol: &str) -> Option<StandardizedOrderBook> {
-        info!("[Binance] 获取订单簿快照: {}", symbol);
+        info!("[Binance] 获取订单簿快照: {symbol}");
         // 暂时返回None，实际实现需要从本地缓存获取
         None
     }
     
     fn get_recent_trades_snapshot(&self, symbol: &str, limit: usize) -> Vec<StandardizedTrade> {
-        info!("[Binance] 获取最近交易快照: {}, 限制: {}", symbol, limit);
+        info!("[Binance] 获取最近交易快照: {symbol}, 限制: {limit}");
         // 暂时返回空向量，实际实现需要从本地缓存获取
         Vec::new()
     }
@@ -313,7 +313,7 @@ impl BinanceAdapter {
         symbols: Vec<String>,
         data_types: Vec<DataType>,
     ) -> Result<(), ConnectorError> {
-        info!("[Binance] 订阅市场数据: symbols={:?}, types={:?}", symbols, data_types);
+        info!("[Binance] 订阅市场数据: symbols={symbols:?}, types={data_types:?}");
         
         // 存储订阅信息
         {
@@ -331,7 +331,7 @@ impl BinanceAdapter {
         if let Some(handler) = handler_guard.as_ref() {
             // 如果已连接，立即订阅
             handler.subscribe_market_data(symbols, data_types).await.map_err(|e| {
-                ConnectorError::SubscriptionFailed(format!("订阅市场数据失败: {}", e))
+                ConnectorError::SubscriptionFailed(format!("订阅市场数据失败: {e}"))
             })?;
             info!("[Binance] 市场数据订阅成功");
             Ok(())
@@ -350,12 +350,12 @@ impl BinanceAdapter {
         symbols: Vec<String>,
         data_types: Vec<DataType>,
     ) -> Result<(), ConnectorError> {
-        info!("[Binance] 取消订阅市场数据: symbols={:?}, types={:?}", symbols, data_types);
+        info!("[Binance] 取消订阅市场数据: symbols={symbols:?}, types={data_types:?}");
         
         let handler_guard = self.websocket_handler.read().await;
         if let Some(handler) = handler_guard.as_ref() {
             handler.unsubscribe_market_data(symbols, data_types).await.map_err(|e| {
-                ConnectorError::SubscriptionFailed(format!("取消订阅失败: {}", e))
+                ConnectorError::SubscriptionFailed(format!("取消订阅失败: {e}"))
             })?;
             info!("[Binance] 取消订阅成功");
             Ok(())

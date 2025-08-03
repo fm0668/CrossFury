@@ -65,7 +65,7 @@ pub async fn load_cached_products(cache_file: &str) -> Result<HashMap<String, Pr
             Ok(products)
         }
         Err(err) => {
-            error!("Error loading products cache {}: {}", cache_file, err);
+            error!("Error loading products cache {cache_file}: {err}");
             Ok(HashMap::new())
         }
     }
@@ -76,11 +76,11 @@ pub async fn save_cached_products(products: &HashMap<String, Product>, cache_fil
     let json_data = serde_json::to_string(products)?;
     match fs::write(cache_file, json_data) {
         Ok(_) => {
-            info!("Saved products to cache: {}", cache_file);
+            info!("Saved products to cache: {cache_file}");
             Ok(())
         }
         Err(err) => {
-            error!("Error saving products cache {}: {}", cache_file, err);
+            error!("Error saving products cache {cache_file}: {err}");
             Err(AppError::IoError(err))
         }
     }
@@ -222,7 +222,7 @@ pub async fn distribute_symbols(
     // Calculate symbols per connection using ceiling division
     let symbols_per_connection = std::cmp::min(
         MAX_SUBSCRIPTIONS_PER_CONNECTION,
-        (symbols.len() + max_connections - 1) / max_connections
+        symbols.len().div_ceil(max_connections)
     );
     
     // Create chunks of symbols

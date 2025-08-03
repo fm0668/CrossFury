@@ -8,6 +8,11 @@ pub mod websocket;
 pub mod rest_api;
 pub mod message_parser;
 pub mod config;
+pub mod risk_manager;
+pub mod cache;
+pub mod performance_monitor;
+pub mod test_framework;
+pub mod advanced_features;
 
 // 重新导出主要类型
 pub use connector::BinanceFuturesConnector;
@@ -15,6 +20,11 @@ pub use websocket::BinanceFuturesWebSocketHandler;
 pub use rest_api::BinanceFuturesRestClient;
 pub use message_parser::BinanceFuturesMessageParser;
 pub use config::BinanceFuturesConfig;
+pub use risk_manager::RiskManager;
+pub use cache::MarketDataCache;
+pub use performance_monitor::PerformanceMonitor;
+pub use test_framework::{TestScenarioBuilder, TestEnvironment, MockMarketDataGenerator, MockTradeExecutor};
+pub use advanced_features::{AlgoTradingEngine, SmartRouter, AlgoStrategy, AlgoOrder};
 
 // 期货特有的常量
 pub mod constants {

@@ -44,7 +44,7 @@ impl LBankWebSocketHandler {
                 Ok(())
             },
             Err(e) => {
-                error!("LBank WebSocket handler failed: {}", e);
+                error!("LBank WebSocket handler failed: {e}");
                 Err(e)
             }
         }
@@ -56,7 +56,7 @@ impl LBankWebSocketHandler {
         
         // 在测试环境中，我们不启动真实的WebSocket连接
         // 只是模拟订阅成功
-        info!("LBank subscription simulated for symbols: {:?}", symbols);
+        info!("LBank subscription simulated for symbols: {symbols:?}");
         Ok(())
     }
 

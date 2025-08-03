@@ -54,11 +54,11 @@ impl BinanceSpotConnector {
         };
         
         if streams.is_empty() {
-            return format!("{}/ws/btcusdt@ticker", base_url); // 默认流
+            return format!("{base_url}/ws/btcusdt@ticker"); // 默认流
         }
         
         let streams_param = streams.join("/");
-        format!("{}/stream?streams={}", base_url, streams_param)
+        format!("{base_url}/stream?streams={streams_param}")
     }
     
     /// 获取REST API URL
@@ -87,14 +87,14 @@ impl BinanceSpotConnector {
         // 解析最佳买卖价
         let best_bid = bids.first()
             .and_then(|b| b.as_array())
-            .and_then(|arr| arr.get(0))
+            .and_then(|arr| arr.first())
             .and_then(|p| p.as_str())
             .and_then(|s| s.parse::<f64>().ok())
             .unwrap_or(0.0);
             
         let best_ask = asks.first()
             .and_then(|a| a.as_array())
-            .and_then(|arr| arr.get(0))
+            .and_then(|arr| arr.first())
             .and_then(|p| p.as_str())
             .and_then(|s| s.parse::<f64>().ok())
             .unwrap_or(0.0);
@@ -105,7 +105,7 @@ impl BinanceSpotConnector {
         
         // 创建订单簿更新
         let orderbook_update = crate::OrderbookUpdate {
-            symbol: format!("BINANCE_{}", symbol),
+            symbol: format!("BINANCE_{symbol}"),
             best_bid,
             best_ask,
             timestamp: chrono::Utc::now().timestamp_millis(),
@@ -120,9 +120,9 @@ impl BinanceSpotConnector {
         // 发送到订单簿队列
         if let Some(tx) = &self.app_state.orderbook_queue {
             if let Err(e) = tx.send(orderbook_update) {
-                error!("[Binance] 发送订单簿更新失败: {}", e);
+                error!("[Binance] 发送订单簿更新失败: {e}");
             } else {
-                debug!("[Binance] 订单簿更新已发送: {}", symbol);
+                debug!("[Binance] 订单簿更新已发送: {symbol}");
             }
         }
         
@@ -153,8 +153,7 @@ impl BinanceSpotConnector {
             .and_then(|m| m.as_bool())
             .unwrap_or(false);
         
-        info!("[Binance] 交易数据: {} - 价格: {}, 数量: {}, 时间: {}", 
-              symbol, price, quantity, timestamp);
+        info!("[Binance] 交易数据: {symbol} - 价格: {price}, 数量: {quantity}, 时间: {timestamp}");
         
         // 这里可以添加交易数据的进一步处理逻辑
         // 例如发送到交易数据队列或更新统计信息
@@ -197,18 +196,18 @@ impl BinanceSpotConnector {
                 match data_type {
                     DataType::OrderBook => {
                         // 订阅深度数据，20档，100ms更新
-                        streams.push(format!("{}@depth20@100ms", symbol_lower));
+                        streams.push(format!("{symbol_lower}@depth20@100ms"));
                     }
                     DataType::Trade => {
                         // 订阅交易数据
-                        streams.push(format!("{}@trade", symbol_lower));
+                        streams.push(format!("{symbol_lower}@trade"));
                     }
                     DataType::Ticker24hr => {
                         // 订阅24小时价格变动统计
-                        streams.push(format!("{}@ticker", symbol_lower));
+                        streams.push(format!("{symbol_lower}@ticker"));
                     }
                     _ => {
-                        warn!("[Binance] 不支持的数据类型: {:?}", data_type);
+                        warn!("[Binance] 不支持的数据类型: {data_type:?}");
                     }
                 }
             }

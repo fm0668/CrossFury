@@ -4,7 +4,7 @@
 use crate::{AppState, OrderbookUpdate};
 use crate::utils::ensure_exchange_prefix;
 use crate::config::get_config;
-use log::{info, error, debug};
+use log::{info, error};
 use serde_json::{json, Value};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use futures::{SinkExt, StreamExt};
@@ -25,7 +25,7 @@ pub async fn bybit_futures_websocket_handler(
     loop {
         match connect_async(ws_url).await {
             Ok((ws_stream, _)) => {
-                info!("BYBIT_FUTURES {}: Connected successfully", connection_id);
+                info!("BYBIT_FUTURES {connection_id}: Connected successfully");
                 let (mut write, mut read) = ws_stream.split();
 
                 // Subscribe to orderbook data for all symbols
@@ -36,7 +36,7 @@ pub async fn bybit_futures_websocket_handler(
                     });
 
                     if let Err(e) = write.send(Message::Text(subscribe_msg.to_string())).await {
-                        error!("BYBIT_FUTURES {}: Failed to subscribe {}: {}", connection_id, symbol, e);
+                        error!("BYBIT_FUTURES {connection_id}: Failed to subscribe {symbol}: {e}");
                     }
                     sleep(Duration::from_millis(10)).await;
                 }
@@ -53,7 +53,7 @@ pub async fn bybit_futures_websocket_handler(
                             let _ = write.send(Message::Pong(payload)).await;
                         }
                         Err(e) => {
-                            error!("BYBIT_FUTURES {}: WebSocket error: {}", connection_id, e);
+                            error!("BYBIT_FUTURES {connection_id}: WebSocket error: {e}");
                             break;
                         }
                         _ => {}
@@ -61,7 +61,7 @@ pub async fn bybit_futures_websocket_handler(
                 }
             }
             Err(e) => {
-                error!("BYBIT_FUTURES {}: Connection failed: {}", connection_id, e);
+                error!("BYBIT_FUTURES {connection_id}: Connection failed: {e}");
                 sleep(Duration::from_secs(5)).await;
             }
         }
@@ -122,7 +122,7 @@ async fn process_bybit_depth_update(
 
             if let Some(tx) = &app_state.orderbook_queue {
                 if let Err(e) = tx.send(update) {
-                    error!("BYBIT_FUTURES {}: Failed to send update: {}", connection_id, e);
+                    error!("BYBIT_FUTURES {connection_id}: Failed to send update: {e}");
                 }
             }
         }

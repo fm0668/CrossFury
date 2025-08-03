@@ -83,8 +83,7 @@ pub fn normalize_symbol(symbol: &str) -> String {
     
     // Aggressively normalize by removing all separators and converting to uppercase
     symbol_without_prefix
-        .replace('_', "")
-        .replace('-', "")
+        .replace(['_', '-'], "")
         .to_uppercase()
 }
 

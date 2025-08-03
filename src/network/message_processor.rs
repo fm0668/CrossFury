@@ -51,11 +51,11 @@ fn normalize_exchange_symbol(exchange: &str, symbol: &str) -> String {
         },
         "BATONEX" => {
             // Batonex formatting
-            symbol.replace('-', "").replace('_', "").to_uppercase()
+            symbol.replace(['-', '_'], "").to_uppercase()
         },
         "COINCATCH" => {
             // Coincatch formatting
-            symbol.replace('-', "").replace('_', "").to_uppercase()
+            symbol.replace(['-', '_'], "").to_uppercase()
         },
         _ => {
             // Default normalization
@@ -116,11 +116,10 @@ fn process_lbank_depth_update(
                     };
                     
                     if let Err(e) = tx.send(update) {
-                        error!("LBank {}: Failed to send orderbook update: {}", connection_id, e);
+                        error!("LBank {connection_id}: Failed to send orderbook update: {e}");
                         return Ok(false);
                     } else {
-                        debug!("LBank {}: Orderbook updated for {}: bid={}, ask={}", 
-                            connection_id, pair, best_bid, best_ask);
+                        debug!("LBank {connection_id}: Orderbook updated for {pair}: bid={best_bid}, ask={best_ask}");
                         return Ok(true);
                     }
                 } else {
@@ -143,7 +142,7 @@ fn process_lbank_depth_update(
                 }
             }
         }
-        return Ok(false);
+        Ok(false)
     } else {
         // Legacy processing without SIMD
         if let Some(depth_obj) = value.get("depth") {
@@ -239,11 +238,10 @@ fn process_lbank_depth_update(
                 };
                 
                 if let Err(e) = tx.send(update) {
-                    error!("LBank {}: Failed to send orderbook update: {}", connection_id, e);
+                    error!("LBank {connection_id}: Failed to send orderbook update: {e}");
                     Ok(false)
                 } else {
-                    debug!("LBank {}: Orderbook updated for {}: bid={}, ask={}", 
-                        connection_id, pair, best_bid, best_ask);
+                    debug!("LBank {connection_id}: Orderbook updated for {pair}: bid={best_bid}, ask={best_ask}");
                     Ok(true)
                 }
             } else {
@@ -377,11 +375,10 @@ fn process_xtcom_depth_update(
                     };
                     
                     if let Err(e) = tx.send(update) {
-                        error!("XTCom {}: Failed to send orderbook update: {}", connection_id, e);
+                        error!("XTCom {connection_id}: Failed to send orderbook update: {e}");
                         Ok(false)
                     } else {
-                        debug!("XTCom {}: Orderbook updated for {}: bid={}, ask={}", 
-                            connection_id, prefixed_symbol, best_bid, best_ask);
+                        debug!("XTCom {connection_id}: Orderbook updated for {prefixed_symbol}: bid={best_bid}, ask={best_ask}");
                         Ok(true)
                     }
                 } else {
@@ -465,7 +462,7 @@ fn process_phemex_orderbook_update(
                 // Extract full depth data for accurate slippage calculation
                 let depth_asks = asks_array.iter()
                     .filter_map(|level| {
-                        if level.as_array().map_or(false, |arr| arr.len() >= 2) {
+                        if level.as_array().is_some_and(|arr| arr.len() >= 2) {
                             let price = level[0].as_str().unwrap_or("0")
                                 .parse::<f64>().unwrap_or(0.0) / divisor;
                             let quantity = level[1].as_str().unwrap_or("0")
@@ -484,7 +481,7 @@ fn process_phemex_orderbook_update(
                     
                 let depth_bids = bids_array.iter()
                     .filter_map(|level| {
-                        if level.as_array().map_or(false, |arr| arr.len() >= 2) {
+                        if level.as_array().is_some_and(|arr| arr.len() >= 2) {
                             let price = level[0].as_str().unwrap_or("0")
                                 .parse::<f64>().unwrap_or(0.0) / divisor;
                             let quantity = level[1].as_str().unwrap_or("0")
@@ -519,11 +516,10 @@ fn process_phemex_orderbook_update(
                     };
                     
                     if let Err(e) = tx.send(update) {
-                        error!("Connection {}: Failed to send orderbook update: {}", connection_id, e);
+                        error!("Connection {connection_id}: Failed to send orderbook update: {e}");
                         Ok(false)
                     } else {
-                        debug!("Connection {}: Orderbook updated for {}: bid={}, ask={}", 
-                            connection_id, symbol, best_bid, best_ask);
+                        debug!("Connection {connection_id}: Orderbook updated for {symbol}: bid={best_bid}, ask={best_ask}");
                         Ok(true)
                     }
                 } else {
@@ -557,7 +553,7 @@ fn process_phemex_orderbook_update(
 /// Parse JSON message using standard serde_json for reliability
 fn try_simd_parse(message: &str) -> Result<Value, AppError> {
     // Use standard JSON parsing for simplicity and reliability
-    serde_json::from_str(message).map_err(|e| AppError::SerializationError(e))
+    serde_json::from_str(message).map_err(AppError::SerializationError)
 }
 
 /// Process incoming WebSocket messages with reliable timestamp tracking
@@ -571,7 +567,7 @@ pub async fn process_message(app_state: &AppState, connection_id: &str, message:
     // Skip detailed processing for pong messages - fast path
     if message.contains("pong") || message.contains("\"status\":\"success\"") {
         if message.contains("pong") {
-            debug!("Connection {}: Received pong response", connection_id);
+            debug!("Connection {connection_id}: Received pong response");
         }
         return Ok(true);
     }
@@ -599,18 +595,18 @@ pub async fn process_message(app_state: &AppState, connection_id: &str, message:
     let message_value: Value = match try_simd_parse(message) {
         Ok(value) => value,
         Err(e) => {
-            error!("Connection {}: Failed to parse message: {}", connection_id, e);
+            error!("Connection {connection_id}: Failed to parse message: {e}");
             
             // Record parsing error with proper exchange
             if let Ok(exchange_enum) = exchange.parse::<Exchange>() {
                 record_error(
                     exchange_enum,
                     Some(connection_id),
-                    &AppError::ParseError(format!("Failed to parse message: {}", e))
+                    &AppError::ParseError(format!("Failed to parse message: {e}"))
                 );
             }
 
-            return Err(AppError::ParseError(format!("Failed to parse message: {}", e)));
+            return Err(AppError::ParseError(format!("Failed to parse message: {e}")));
         }
     };
     
@@ -630,7 +626,7 @@ pub async fn process_message(app_state: &AppState, connection_id: &str, message:
         
         // Handle pings from LBank (they expect a pong response)
         if message_value.get("action").and_then(|a| a.as_str()) == Some("ping") {
-            debug!("LBank {}: Received ping, will respond with pong", connection_id);
+            debug!("LBank {connection_id}: Received ping, will respond with pong");
             processed = true;
         }
     }
@@ -657,7 +653,7 @@ pub async fn process_message(app_state: &AppState, connection_id: &str, message:
         // Handle pong responses
         if is_pong_response(&message_value) {
             if let Some(id) = message_value.get("id").and_then(|i| i.as_u64()) {
-                debug!("Connection {}: Received pong response for ID: {}", connection_id, id);
+                debug!("Connection {connection_id}: Received pong response for ID: {id}");
             }
             processed = true;
         }

@@ -148,6 +148,12 @@ pub struct AppState {
     pub reconnect_signals: Arc<DashMap<String, bool>>, // Connection ID -> should reconnect flag
 }
 
+impl Default for AppState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AppState {
     pub fn new() -> Self {
         let current_time = chrono::Utc::now().timestamp_millis() as u64;
@@ -224,11 +230,7 @@ impl AppState {
         
         if let Some(timestamp) = self.connection_timestamps.get(connection_id) {
             let last_time = timestamp.value().load(Ordering::SeqCst);
-            if current_time > last_time {
-                current_time - last_time
-            } else {
-                0 // Clock skew protection
-            }
+            current_time.saturating_sub(last_time)
         } else {
             STALE_CONNECTION_TIMEOUT as u64 + 1 // No record means it's been idle since the beginning
         }
@@ -240,11 +242,7 @@ impl AppState {
         let current_time = chrono::Utc::now().timestamp_millis() as u64;
         let last_time = self.last_check_time.load(Ordering::SeqCst);
         
-        if current_time > last_time {
-            current_time - last_time
-        } else {
-            0 // Clock skew protection
-        }
+        current_time.saturating_sub(last_time)
     }
     
     /// Mark a connection as unhealthy
@@ -427,6 +425,9 @@ pub enum AppError {
     
     #[error("Cryptographic error: {0}")]
     CryptoError(String),
+    
+    #[error("Risk management error: {0}")]
+    RiskError(String),
     
     #[error("Other error: {0}")]
     Other(String),

@@ -157,6 +157,7 @@ impl std::fmt::Display for HealthStatus {
 
 /// 连接统计信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct ConnectionStats {
     pub connected_since: Option<chrono::DateTime<chrono::Utc>>,
     pub messages_received: u64,
@@ -166,15 +167,3 @@ pub struct ConnectionStats {
     pub latency_ms: Option<f64>,
 }
 
-impl Default for ConnectionStats {
-    fn default() -> Self {
-        Self {
-            connected_since: None,
-            messages_received: 0,
-            messages_sent: 0,
-            reconnect_count: 0,
-            last_ping_time: None,
-            latency_ms: None,
-        }
-    }
-}

@@ -7,7 +7,6 @@ use tokio::sync::{RwLock, Mutex};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use futures::{SinkExt, StreamExt};
 use log::{info, warn, error, debug};
-use serde_json::{Value, json};
 use std::time::Duration;
 use tokio::time::{sleep, timeout};
 use chrono;
@@ -80,15 +79,15 @@ impl BinanceWebSocketHandler {
             for data_type in &data_types {
                 match data_type {
                     crate::types::DataType::OrderBook => {
-                        streams.push(format!("{}@depth20@100ms", symbol_lower));
+                        streams.push(format!("{symbol_lower}@depth20@100ms"));
                         info!("[Binance] {} 添加深度流: {}@depth20@100ms", self.connection_id, symbol_lower);
                     }
                     crate::types::DataType::Trade => {
-                        streams.push(format!("{}@trade", symbol_lower));
+                        streams.push(format!("{symbol_lower}@trade"));
                         info!("[Binance] {} 添加交易流: {}@trade", self.connection_id, symbol_lower);
                     }
                     crate::types::DataType::Ticker24hr => {
-                        streams.push(format!("{}@ticker", symbol_lower));
+                        streams.push(format!("{symbol_lower}@ticker"));
                         info!("[Binance] {} 添加价格流: {}@ticker", self.connection_id, symbol_lower);
                     }
                     _ => {
@@ -123,7 +122,7 @@ impl BinanceWebSocketHandler {
         
         // 等待连接建立（减少等待时间避免阻塞）
         let mut attempts = 0;
-        while attempts < 50 { // 最多等待5秒
+        while attempts < 30 { // 最多等待3秒
             tokio::time::sleep(Duration::from_millis(100)).await;
             let status = *self.connection_status.read().await;
             match status {
@@ -132,7 +131,8 @@ impl BinanceWebSocketHandler {
                     return Ok(());
                 }
                 ConnectionStatus::Error => {
-                    return Err("连接失败".into());
+                    warn!("[Binance] WebSocket连接失败，但连接将在后台继续尝试");
+                    return Ok(()); // 不返回错误，让连接在后台继续尝试
                 }
                 _ => {}
             }
@@ -140,7 +140,7 @@ impl BinanceWebSocketHandler {
         }
         
         // 连接超时，但不返回错误，让连接在后台继续尝试
-        warn!("[Binance] WebSocket连接超时，但连接将在后台继续尝试");
+        info!("[Binance] WebSocket连接正在后台建立中...");
         Ok(())
     }
     
@@ -208,13 +208,13 @@ impl BinanceWebSocketHandler {
         symbols: Vec<String>,
         data_types: Vec<DataType>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        info!("[Binance] 取消订阅市场数据: symbols={:?}, types={:?}", symbols, data_types);
+        info!("[Binance] 取消订阅市场数据: symbols={symbols:?}, types={data_types:?}");
         
         // 生成取消订阅消息
         let unsubscription_message = self.spot_connector
             .create_subscription_message(&symbols, &data_types, false)?;
         
-        info!("[Binance] 取消订阅消息: {}", unsubscription_message);
+        info!("[Binance] 取消订阅消息: {unsubscription_message}");
         
         // 注意：实际的取消订阅消息发送需要在WebSocket连接循环中处理
         
@@ -237,14 +237,14 @@ impl BinanceWebSocketHandler {
         connection_id: String,
     ) {
         let mut retry_count = 0;
-        let max_retries = 10;
+        let max_retries = 15; // 增加最大重试次数，提高实盘环境的连接稳定性
         
         while retry_count < max_retries {
             // 检查是否应该继续重连
             {
                 let should_reconnect_guard = should_reconnect.read().await;
                 if !*should_reconnect_guard {
-                    info!("[Binance] {} 停止重连", connection_id);
+                    info!("[Binance] {connection_id} 停止重连");
                     break;
                 }
             }
@@ -253,7 +253,7 @@ impl BinanceWebSocketHandler {
             
             match timeout(Duration::from_secs(15), Self::connect_with_headers(ws_url)).await {
                 Ok(Ok((ws_stream, _response))) => {
-                    info!("[Binance] {} WebSocket连接成功", connection_id);
+                    info!("[Binance] {connection_id} WebSocket连接成功");
                     retry_count = 0; // 重置重试计数
                     
                     // 更新连接状态
@@ -265,12 +265,16 @@ impl BinanceWebSocketHandler {
                     let (write, mut read) = ws_stream.split();
                     let write = Arc::new(Mutex::new(write));
                     
-                    // 启动心跳任务
+                    // 启动心跳任务，参考xtcom的实现
                     let ping_write = write.clone();
                     let ping_connection_id = connection_id.clone();
                     let ping_should_reconnect = should_reconnect.clone();
                     let ping_task = tokio::spawn(async move {
-                        let mut interval = tokio::time::interval(Duration::from_secs(20));
+                        let mut interval = tokio::time::interval(Duration::from_secs(10)); // 缩短心跳间隔到10秒
+                        
+                        // 等待连接稳定后再开始发送心跳
+                        sleep(Duration::from_secs(1)).await;
+                        
                         loop {
                             interval.tick().await;
                             
@@ -278,27 +282,30 @@ impl BinanceWebSocketHandler {
                             {
                                 let should_reconnect_guard = ping_should_reconnect.read().await;
                                 if !*should_reconnect_guard {
+                                    debug!("[Binance] {ping_connection_id} 心跳任务收到停止信号");
                                     break;
                                 }
                             }
                             
-                            debug!("[Binance] {} 发送心跳", ping_connection_id);
+                            debug!("[Binance] {ping_connection_id} 发送心跳");
                             let mut writer = ping_write.lock().await;
                             if let Err(e) = writer.send(Message::Ping(vec![])).await {
-                                error!("[Binance] {} 发送心跳失败: {}", ping_connection_id, e);
+                                error!("[Binance] {ping_connection_id} 发送心跳失败: {e}");
                                 break;
                             }
                         }
+                        
+                        debug!("[Binance] {ping_connection_id} 心跳任务结束");
                     });
                     
-                    info!("[Binance] {} 开始接收数据流...", connection_id);
+                    info!("[Binance] {connection_id} 开始接收数据流...");
                     
                     // 消息处理循环
                     let mut consecutive_errors = 0;
                     let mut consecutive_timeouts = 0;
                     
                     loop {
-                        match timeout(Duration::from_secs(30), read.next()).await {
+                        match timeout(Duration::from_secs(10), read.next()).await {
                             Ok(Some(Ok(Message::Text(text)))) => {
                                 consecutive_errors = 0;
                                 consecutive_timeouts = 0;
@@ -307,7 +314,7 @@ impl BinanceWebSocketHandler {
                                     if text.len() > 200 { format!("{}...({}字符)", &text[..200], text.len()) } else { text.clone() });
                                 
                                 if let Err(e) = Self::process_message(&spot_connector, &text, &app_state, &connection_id).await {
-                                    error!("[Binance] {} 处理消息失败: {}", connection_id, e);
+                                    error!("[Binance] {connection_id} 处理消息失败: {e}");
                                 }
                             }
                             Ok(Some(Ok(Message::Ping(payload)))) => {
@@ -316,56 +323,78 @@ impl BinanceWebSocketHandler {
                                 
                                 let mut writer = write.lock().await;
                                 if let Err(e) = writer.send(Message::Pong(payload)).await {
-                                    error!("[Binance] {} 发送Pong失败: {}", connection_id, e);
+                                    error!("[Binance] {connection_id} 发送Pong失败: {e}");
                                     break;
                                 }
                             }
                             Ok(Some(Ok(Message::Pong(_)))) => {
                                 consecutive_errors = 0;
                                 consecutive_timeouts = 0;
-                                debug!("[Binance] {} 收到Pong", connection_id);
+                                debug!("[Binance] {connection_id} 收到Pong");
                             }
                             Ok(Some(Ok(Message::Close(_)))) => {
-                                info!("[Binance] {} WebSocket连接被服务器关闭", connection_id);
+                                info!("[Binance] {connection_id} WebSocket连接被服务器关闭");
                                 break;
                             }
                             Ok(Some(Ok(Message::Binary(_)))) => {
                                 consecutive_errors = 0;
                                 consecutive_timeouts = 0;
-                                debug!("[Binance] {} 收到二进制消息，忽略", connection_id);
+                                debug!("[Binance] {connection_id} 收到二进制消息，忽略");
                             }
                             Ok(Some(Err(e))) => {
                                 consecutive_errors += 1;
-                                error!("[Binance] {} WebSocket错误: {}", connection_id, e);
-                                if consecutive_errors >= 3 {
-                                    error!("[Binance] {} 连续错误过多，重连", connection_id);
-                                    break;
+                                
+                                // 根据错误类型进行不同处理
+                                match &e {
+                                    tokio_tungstenite::tungstenite::Error::ConnectionClosed => {
+                                        error!("[Binance] {connection_id} 连接已关闭");
+                                        break;
+                                    }
+                                    tokio_tungstenite::tungstenite::Error::AlreadyClosed => {
+                                        error!("[Binance] {connection_id} 连接已经关闭");
+                                        break;
+                                    }
+                                    tokio_tungstenite::tungstenite::Error::Protocol(_) => {
+                                        error!("[Binance] {connection_id} 协议错误: {e}");
+                                        if consecutive_errors >= 2 {
+                                            error!("[Binance] {connection_id} 多次协议错误，重连");
+                                            break;
+                                        }
+                                    }
+                                    _ => {
+                                        error!("[Binance] {connection_id} WebSocket错误: {e}");
+                                        if consecutive_errors >= 3 {
+                                            error!("[Binance] {connection_id} 连续错误过多，重连");
+                                            break;
+                                        }
+                                    }
                                 }
                             }
                             Ok(None) => {
-                                info!("[Binance] {} WebSocket流结束", connection_id);
+                                info!("[Binance] {connection_id} WebSocket流结束");
                                 break;
                             }
                             Err(_) => {
                                 consecutive_timeouts += 1;
-                                warn!("[Binance] {} 读取超时 ({})", connection_id, consecutive_timeouts);
+                                warn!("[Binance] {connection_id} 读取超时 ({consecutive_timeouts})");
                                 
-                                // 在第一次和第二次超时时发送紧急ping
-                                if consecutive_timeouts <= 2 {
-                                    debug!("[Binance] {} 发送紧急ping以保持连接", connection_id);
+                                // 参考xtcom的超时处理策略
+                                if consecutive_timeouts == 1 {
+                                    // 第一次超时时发送紧急ping
+                                    warn!("[Binance] {connection_id} 发送紧急ping以保持连接");
                                     let mut writer = write.lock().await;
                                     if let Err(e) = writer.send(Message::Ping(vec![])).await {
-                                        error!("[Binance] {} 发送紧急ping失败: {}", connection_id, e);
+                                        error!("[Binance] {connection_id} 发送紧急ping失败: {e}");
                                         break;
                                     }
-                                } else {
-                                    error!("[Binance] {} 连续超时过多，重连", connection_id);
+                                } else if consecutive_timeouts >= 2 {
+                                    error!("[Binance] {connection_id} 连续超时过多，重连");
                                     break;
                                 }
                             }
                             _ => {
                                 // 处理其他未知的消息类型
-                                debug!("[Binance] {} 收到未知消息类型", connection_id);
+                                debug!("[Binance] {connection_id} 收到未知消息类型");
                             }
                         }
                     }
@@ -379,10 +408,10 @@ impl BinanceWebSocketHandler {
                         *status = ConnectionStatus::Disconnected;
                     }
                     
-                    error!("[Binance] {} 会话结束，准备重连...", connection_id);
+                    error!("[Binance] {connection_id} 会话结束，准备重连...");
                 }
                 Ok(Err(e)) => {
-                    error!("[Binance] {} 连接失败: {}", connection_id, e);
+                    error!("[Binance] {connection_id} 连接失败: {e}");
                     retry_count += 1;
                     
                     // 更新连接状态
@@ -392,7 +421,7 @@ impl BinanceWebSocketHandler {
                     }
                 }
                 Err(_) => {
-                    error!("[Binance] {} 连接超时", connection_id);
+                    error!("[Binance] {connection_id} 连接超时");
                     retry_count += 1;
                     
                     // 更新连接状态
@@ -403,13 +432,13 @@ impl BinanceWebSocketHandler {
                 }
             }
             
-            // 指数退避重连
-            let delay = f64::min(0.5 * 1.5f64.powi(retry_count as i32), 30.0);
-            info!("[Binance] {} {:.2}秒后重连...", connection_id, delay);
+            // 指数退避重连，参考xtcom的实现
+            let delay = f64::min(0.5 * 1.5f64.powi(retry_count), 30.0); // 使用更保守的重连策略
+            info!("[Binance] {connection_id} {delay:.2}秒后重连... (尝试 {}/{})", retry_count + 1, max_retries);
             sleep(Duration::from_secs_f64(delay)).await;
         }
         
-        error!("[Binance] {} 达到最大重试次数，停止连接", connection_id);
+        error!("[Binance] {connection_id} 达到最大重试次数，停止连接");
     }
     
     /// 处理WebSocket消息
@@ -553,13 +582,12 @@ impl BinanceWebSocketHandler {
         // 发送到队列
         if let Some(ref sender) = app_state.depth_queue {
             if let Err(e) = sender.send(depth_update) {
-                error!("[Binance] {} 发送深度数据到队列失败: {}", connection_id, e);
+                error!("[Binance] {connection_id} 发送深度数据到队列失败: {e}");
             } else {
-                debug!("[Binance] {} 已发送深度数据: {} 买价:{} 卖价:{}", 
-                    connection_id, symbol, best_bid_price, best_ask_price);
+                debug!("[Binance] {connection_id} 已发送深度数据: {symbol} 买价:{best_bid_price} 卖价:{best_ask_price}");
             }
         } else {
-            warn!("[Binance] {} 深度队列未初始化，跳过发送", connection_id);
+            warn!("[Binance] {connection_id} 深度队列未初始化，跳过发送");
         }
         
         Ok(())

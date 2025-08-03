@@ -3,8 +3,6 @@
 //! 定义期货交易中使用的各种类型和结构体
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use crate::types::common::*;
 
 /// 交易事件类型
 #[derive(Debug, Clone, Serialize, Deserialize)]

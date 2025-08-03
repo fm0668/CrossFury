@@ -3,9 +3,9 @@
 
 use crate::core::*;
 use crate::exchange_types::{Exchange, ExchangeFees, CrossExchangeArb, StandardOrderBook, MultiHopArbitragePath};
-use crate::token_lists::{TARGET_TOKENS, normalize_symbol, extract_exchange};
+use crate::token_lists::TARGET_TOKENS;
 use crate::config::get_config;
-use log::{info, warn, debug, error};
+use log::{info, warn};
 use std::collections::{HashMap, HashSet, VecDeque};
 use lazy_static::lazy_static;
 use std::sync::{Mutex, RwLock};
@@ -331,14 +331,14 @@ pub async fn flush_cross_ex_buffer(filename: &str) -> Result<(), AppError> {
     // If the file is empty, write a header.
     let metadata = std::fs::metadata(filename)?;
     if metadata.len() == 0 {
-        writer.write_record(&[
+        writer.write_record([
             "timestamp", "symbol", "buy_exchange", "sell_exchange",
             "buy_price", "sell_price", "profit_pct", "net_profit_pct"
         ])?;
     }
     
     for record in buf.iter() {
-        writer.write_record(&[
+        writer.write_record([
             &format!("{}", record.timestamp),
             &record.symbol,
             &format!("{:?}", record.buy_exchange),
@@ -384,19 +384,19 @@ pub async fn flush_multi_hop_buffer(filename: &str) -> Result<(), AppError> {
     // If the file is empty, write a header
     let metadata = std::fs::metadata(filename)?;
     if metadata.len() == 0 {
-        writer.write_record(&[
+        writer.write_record([
             "timestamp", "path_id", "hop_count", "symbols", "exchanges", 
             "profit_pct", "net_profit_pct", "fees_pct", "slippage_pct"
         ])?;
     }
     
     for record in buf.iter() {
-        writer.write_record(&[
+        writer.write_record([
             &format!("{}", record.timestamp),
             &record.path_id,
             &format!("{}", record.symbol_path.len()),
             &record.symbol_path.join(":"),
-            &record.exchange_path.iter().map(|e| format!("{:?}", e)).collect::<Vec<_>>().join(":"),
+            &record.exchange_path.iter().map(|e| format!("{e:?}")).collect::<Vec<_>>().join(":"),
             &format!("{:.4}", record.total_profit_pct),
             &format!("{:.4}", record.net_profit_pct),
             &format!("{:.4}", record.total_fees_pct),
@@ -414,7 +414,7 @@ pub async fn flush_multi_hop_buffer(filename: &str) -> Result<(), AppError> {
 /// Create a unique key for an arbitrage opportunity
 #[inline(always)]
 fn get_opportunity_key(symbol: &str, buy_exchange: &Exchange, sell_exchange: &Exchange) -> String {
-    format!("{}:{:?}:{:?}", symbol, buy_exchange, sell_exchange)
+    format!("{symbol}:{buy_exchange:?}:{sell_exchange:?}")
 }
 
 /// Check if this opportunity was recently detected (to avoid duplicates)
@@ -451,7 +451,7 @@ fn is_symbol_suspicious(symbol: &str) -> bool {
     
     // If more than 20 opportunities from same symbol, mark as suspicious
     if *count > 20 {
-        info!("Symbol {} marked as suspicious with {} opportunities", symbol, count);
+        info!("Symbol {symbol} marked as suspicious with {count} opportunities");
         return true;
     }
     
@@ -498,8 +498,7 @@ fn passes_sanity_checks(
     if net_profit_pct > max_reasonable_profit {
         // If we're still seeing suspiciously high profits after normalization,
         // it might be a data error
-        info!("Rejecting opportunity with abnormally high profit: {} with profit {:.2}%", 
-              symbol, net_profit_pct);
+        info!("Rejecting opportunity with abnormally high profit: {symbol} with profit {net_profit_pct:.2}%");
         return false;
     }
 
@@ -531,7 +530,7 @@ pub fn compute_cross_exchange_profit_with_slippage(
     }
     
     // First check if this is just a scaling difference
-    if let Some(_) = detect_scaling_difference(symbol, buy_exchange, sell_exchange, buy_price, sell_price) {
+    if detect_scaling_difference(symbol, buy_exchange, sell_exchange, buy_price, sell_price).is_some() {
         // It's a scaling difference, not a real opportunity
         return None;
     }
@@ -982,7 +981,7 @@ fn find_profitable_paths(
                     } else {
                         // For the first hop, use the last exchange (completing the cycle)
                         if !state.exchanges.is_empty() {
-                            *exchange_map.get(&state.exchanges.last().unwrap()).unwrap_or(&Exchange::Phemex)
+                            *exchange_map.get(state.exchanges.last().unwrap()).unwrap_or(&Exchange::Phemex)
                         } else {
                             Exchange::Phemex // Default
                         }
@@ -1014,10 +1013,10 @@ fn find_profitable_paths(
                         };
                         
                         // Create trading pair symbol
-                        let trading_pair = format!("{}{}", symbol_str, next_symbol);
+                        let trading_pair = format!("{symbol_str}{next_symbol}");
                         
                         // Get orderbook
-                        let full_symbol = format!("{}:{}", exchange, trading_pair);
+                        let full_symbol = format!("{exchange}:{trading_pair}");
                         get_orderbook_for_exchange(app_state, &full_symbol)
                     })
                     .collect();
@@ -1125,7 +1124,7 @@ pub fn get_cross_exchange_symbols(app_state: &AppState) -> HashSet<String> {
 
         // Make sure we have a properly prefixed symbol
         let full_symbol = if !full_symbol.contains(':') {
-            warn!("Found unprefixed symbol in price_data: {}", full_symbol);
+            warn!("Found unprefixed symbol in price_data: {full_symbol}");
             ensure_exchange_prefix(full_symbol, "UNKNOWN")
         } else {
             full_symbol.clone()
@@ -1153,7 +1152,7 @@ pub fn get_cross_exchange_symbols(app_state: &AppState) -> HashSet<String> {
                 // Add to exchange-specific set
                 if let Some(exch) = exchange {
                     exchange_symbols.entry(exch)
-                        .or_insert_with(HashSet::new)
+                        .or_default()
                         .insert(symbol);
                 }
             }
@@ -1206,8 +1205,7 @@ pub fn get_normalized_cross_exchange_symbols(app_state: &AppState) -> HashSet<St
         // 3. Standardizing common quote currencies
         let normalized = original_symbol
             .to_uppercase()
-            .replace('_', "")
-            .replace('-', "");
+            .replace(['_', '-'], "");
             
         // Parse exchange
         let exchange = match exchange_str {
@@ -1225,13 +1223,13 @@ pub fn get_normalized_cross_exchange_symbols(app_state: &AppState) -> HashSet<St
             // Add to exchange-specific set (original format)
             exchange_symbols
                 .entry(exch)
-                .or_insert_with(HashSet::new)
+                .or_default()
                 .insert(original_symbol.clone());
                 
             // Add to normalized mapping
             normalized_map
                 .entry(normalized)
-                .or_insert_with(HashSet::new)
+                .or_default()
                 .insert((exch, original_symbol));
         }
     }
@@ -1345,8 +1343,8 @@ pub fn find_cross_exchange_opportunities(
             }
             
             // Form exchange-specific symbols
-            let buy_symbol = format!("{}:{}", buy_exchange, symbol);
-            let sell_symbol = format!("{}:{}", sell_exchange, symbol);
+            let buy_symbol = format!("{buy_exchange}:{symbol}");
+            let sell_symbol = format!("{sell_exchange}:{symbol}");
             
             // Get price data for both exchanges
             if let (Some(buy_data), Some(sell_data)) = (
@@ -1420,13 +1418,12 @@ pub fn process_mapped_cross_exchange_arbitrage(
         if parts.len() == 2 {
             // Normalize by removing '-' and '_' and converting to uppercase
             let normalized = parts[1]
-                .replace('-', "")
-                .replace('_', "")
+                .replace(['-', '_'], "")
                 .to_uppercase();
             
             normalized_symbols
                 .entry(normalized)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(full_symbol);
         }
     }
@@ -1585,15 +1582,14 @@ pub fn process_mapped_cross_exchange_arbitrage_subset(
         if parts.len() == 2 {
             // Normalize by removing '-' and '_' and converting to uppercase
             let normalized = parts[1]
-                .replace('-', "")
-                .replace('_', "")
+                .replace(['-', '_'], "")
                 .to_uppercase();
             
             // Only process symbols in our subset
             if symbols.contains(&normalized) {
                 normalized_symbols
                     .entry(normalized)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(full_symbol);
             }
         }
@@ -1755,32 +1751,22 @@ pub fn build_exchange_fees() -> HashMap<Exchange, ExchangeFees> {
     }
     
     // Add fallbacks for any missing exchanges
-    if !fees.contains_key(&Exchange::Phemex) {
-        fees.insert(
-            Exchange::Phemex,
-            ExchangeFees::new(
+    fees.entry(Exchange::Phemex).or_insert_with(|| ExchangeFees::new(
                 Exchange::Phemex,
                 0.001, // 0.1% maker
                 0.0006 // 0.06% taker
-            )
-        );
-    }
+            ));
     
     // Add other exchanges as needed
     for exchange in [
         Exchange::LBank, Exchange::XtCom, Exchange::TapBit, 
         Exchange::Hbit, Exchange::Batonex, Exchange::CoinCatch
     ] {
-        if !fees.contains_key(&exchange) {
-            fees.insert(
-                exchange,
-                ExchangeFees::new(
+        fees.entry(exchange).or_insert_with(|| ExchangeFees::new(
                     exchange,
                     0.001, // Default 0.1% maker
                     0.0006 // Default 0.06% taker
-                )
-            );
-        }
+                ));
     }
     
     fees

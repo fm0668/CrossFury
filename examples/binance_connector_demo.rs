@@ -53,7 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             adapter
         },
         Err(e) => {
-            eprintln!("❌ 创建Binance适配器失败: {:?}", e);
+            eprintln!("❌ 创建Binance适配器失败: {e:?}");
             return Err(e.into());
         }
     };
@@ -77,13 +77,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         DataType::Trade,
     ];
     
-    println!("  - 交易对: {:?}", symbols);
-    println!("  - 数据类型: {:?}", data_types);
+    println!("  - 交易对: {symbols:?}");
+    println!("  - 数据类型: {data_types:?}");
     
     match adapter.subscribe_market_data(symbols.clone(), data_types.clone()).await {
         Ok(_) => println!("✅ 市场数据订阅设置成功"),
         Err(e) => {
-            eprintln!("❌ 市场数据订阅设置失败: {:?}", e);
+            eprintln!("❌ 市场数据订阅设置失败: {e:?}");
             return Err(e.into());
         }
     }
@@ -94,7 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match adapter.connect_websocket().await {
         Ok(_) => println!("✅ WebSocket连接成功"),
         Err(e) => {
-            eprintln!("❌ WebSocket连接失败: {:?}", e);
+            eprintln!("❌ WebSocket连接失败: {e:?}");
             return Err(e.into());
         }
     }
@@ -104,7 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // 检查连接状态
     let status = adapter.get_connection_status();
-    println!("📡 当前连接状态: {:?}", status);
+    println!("📡 当前连接状态: {status:?}");
     
     if !matches!(status, ConnectionStatus::Connected) {
         eprintln!("❌ 连接状态异常，退出程序");
@@ -149,8 +149,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // 每100条消息显示统计信息
             if message_count % 100 == 0 {
                 println!();
-                println!("📊 统计信息 (总计: {} 条消息)", message_count);
-                println!("  - 订单簿更新: {} 条", orderbook_count);
+                println!("📊 统计信息 (总计: {message_count} 条消息)");
+                println!("  - 订单簿更新: {orderbook_count} 条");
                 println!("{}", "-".repeat(80));
             }
         }
@@ -166,15 +166,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             match health_adapter.health_check().await {
                 Ok(health_status) => {
-                    println!("🏥 健康检查: {:?}", health_status);
+                    println!("🏥 健康检查: {health_status:?}");
                     
                     // 获取连接统计
                     if let Ok(stats) = health_adapter.get_connection_stats().await {
-                        println!("📈 连接统计: {:?}", stats);
+                        println!("📈 连接统计: {stats:?}");
                     }
                 },
                 Err(e) => {
-                    eprintln!("❌ 健康检查失败: {:?}", e);
+                    eprintln!("❌ 健康检查失败: {e:?}");
                 }
             }
         }
@@ -201,7 +201,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 取消订阅
     println!("📤 正在取消订阅...");
     if let Err(e) = adapter.unsubscribe_market_data(symbols, data_types).await {
-        eprintln!("❌ 取消订阅失败: {:?}", e);
+        eprintln!("❌ 取消订阅失败: {e:?}");
     } else {
         println!("✅ 取消订阅成功");
     }
@@ -209,14 +209,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 断开连接
     println!("🔌 正在断开WebSocket连接...");
     if let Err(e) = adapter.disconnect_websocket().await {
-        eprintln!("❌ 断开连接失败: {:?}", e);
+        eprintln!("❌ 断开连接失败: {e:?}");
     } else {
         println!("✅ 连接断开成功");
     }
     
     // 最终状态检查
     let final_status = adapter.get_connection_status();
-    println!("📡 最终连接状态: {:?}", final_status);
+    println!("📡 最终连接状态: {final_status:?}");
     
     println!();
     println!("🎉 Binance连接器演示程序结束");
@@ -247,13 +247,13 @@ async fn demo_trading_features(adapter: &BinanceAdapter) {
     println!("📝 测试下单功能...");
     match adapter.place_order(&order_request).await {
         Ok(response) => {
-            println!("✅ 下单成功: {:?}", response);
+            println!("✅ 下单成功: {response:?}");
         },
         Err(ConnectorError::TradingNotImplemented) => {
             println!("ℹ️  交易功能未实现（符合预期）");
         },
         Err(e) => {
-            println!("❌ 下单失败: {:?}", e);
+            println!("❌ 下单失败: {e:?}");
         }
     }
     
@@ -261,13 +261,13 @@ async fn demo_trading_features(adapter: &BinanceAdapter) {
     println!("🚫 测试取消订单功能...");
     match adapter.cancel_order("demo_order_001", "BTCUSDT").await {
         Ok(response) => {
-            println!("✅ 取消订单成功: {:?}", response);
+            println!("✅ 取消订单成功: {response:?}");
         },
         Err(ConnectorError::TradingNotImplemented) => {
             println!("ℹ️  交易功能未实现（符合预期）");
         },
         Err(e) => {
-            println!("❌ 取消订单失败: {:?}", e);
+            println!("❌ 取消订单失败: {e:?}");
         }
     }
     
@@ -275,13 +275,13 @@ async fn demo_trading_features(adapter: &BinanceAdapter) {
     println!("👤 测试账户信息功能...");
     match adapter.get_account_balance().await {
         Ok(account) => {
-            println!("✅ 获取账户信息成功: {:?}", account);
+            println!("✅ 获取账户信息成功: {account:?}");
         },
         Err(ConnectorError::TradingNotImplemented) => {
             println!("ℹ️  交易功能未实现（符合预期）");
         },
         Err(e) => {
-            println!("❌ 获取账户信息失败: {:?}", e);
+            println!("❌ 获取账户信息失败: {e:?}");
         }
     }
     

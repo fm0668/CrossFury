@@ -50,3 +50,21 @@ debug_*.rs
 *.json.bak
 output/
 results/
+
+# Documentation and reference files
+*.md
+!README.md
+!CHANGELOG.md
+!LICENSE.md
+项目重构文档/
+Hummingbot参考代码/
+重构错误汇总.md
+币安*.md
+Rust开发技巧.md
+binance_api_config.md
+check_output.txt
+
+# Test directories and files
+binance_test/
+test_binance_connection.py
+run_tests.ps1

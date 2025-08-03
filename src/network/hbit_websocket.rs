@@ -29,11 +29,11 @@ pub async fn hbit_websocket_handler(
     let max_retries = 10;
 
     while retry_count < max_retries {
-        info!("Hbit {}: Connecting to {}", connection_id, HBIT_WS_URL);
+        info!("Hbit {connection_id}: Connecting to {HBIT_WS_URL}");
         
         // Create request with required headers
         let mut request = HBIT_WS_URL.into_client_request()
-            .map_err(|e| AppError::WebSocketError(format!("Failed to create request: {}", e)))?;
+            .map_err(|e| AppError::WebSocketError(format!("Failed to create request: {e}")))?;
         
         // Add standard headers
         request.headers_mut().insert(
@@ -44,7 +44,7 @@ pub async fn hbit_websocket_handler(
         // Connect with timeout
         match timeout(Duration::from_secs(15), connect_async(request)).await {
             Ok(Ok((ws_stream, _))) => {
-                info!("Hbit {}: Connection established", connection_id);
+                info!("Hbit {connection_id}: Connection established");
                 app_state.update_connection_timestamp(&connection_id);
                 let (write, mut read) = ws_stream.split();
                 let write = Arc::new(Mutex::new(write));
@@ -60,7 +60,7 @@ pub async fn hbit_websocket_handler(
                         interval.tick().await;
                         
                         if ping_app_state.should_reconnect(&ping_connection_id) {
-                            error!("Hbit {}: Reconnection signaled, terminating ping task", ping_connection_id);
+                            error!("Hbit {ping_connection_id}: Reconnection signaled, terminating ping task");
                             return;
                         }
                         
@@ -69,25 +69,24 @@ pub async fn hbit_websocket_handler(
                             "event": "ping"
                         });
                         
-                        info!("Hbit {}: Sending heartbeat ping", ping_connection_id);
+                        info!("Hbit {ping_connection_id}: Sending heartbeat ping");
                         ping_app_state.update_connection_timestamp(&ping_connection_id);
                         
                         let mut writer = write_clone.lock().await;
                         if let Err(e) = writer.send(Message::Text(ping_msg.to_string())).await {
-                            error!("Hbit {}: Failed to send ping: {}", ping_connection_id, e);
+                            error!("Hbit {ping_connection_id}: Failed to send ping: {e}");
                             break;
                         }
                         
                         // Check if connection is stale
                         let idle_time = ping_app_state.get_connection_idle_time(&ping_connection_id);
                         if idle_time > STALE_CONNECTION_TIMEOUT as u64 {
-                            error!("Hbit {}: Connection stale for {}ms, terminating ping task", 
-                                  ping_connection_id, idle_time);
+                            error!("Hbit {ping_connection_id}: Connection stale for {idle_time}ms, terminating ping task");
                             break;
                         }
                     }
                     
-                    warn!("Hbit {}: Ping task terminated", ping_connection_id);
+                    warn!("Hbit {ping_connection_id}: Ping task terminated");
                 });
 
                 // Subscribe to symbols for market depth
@@ -120,7 +119,7 @@ pub async fn hbit_websocket_handler(
                                 }
                             }
                                     
-                            format!("{}_{}",  base, quote)
+                            format!("{base}_{quote}")
                         };
                         
                         // Subscribe to 10deep for this symbol
@@ -129,14 +128,14 @@ pub async fn hbit_websocket_handler(
                             "topic": format!("{}.5deep", pair)
                         });
                         
-                        info!("Hbit {}: Subscribing to {}.5deep", connection_id, pair);
+                        info!("Hbit {connection_id}: Subscribing to {pair}.5deep");
                         
                         let mut writer = write.lock().await;
                         if let Err(e) = writer.send(Message::Text(sub_msg.to_string())).await {
-                            error!("Hbit {}: Failed to send subscription for {}: {}", connection_id, pair, e);
+                            error!("Hbit {connection_id}: Failed to send subscription for {pair}: {e}");
                             continue;
                         } else {
-                            info!("Hbit {}: Subscription sent for {}", connection_id, pair);
+                            info!("Hbit {connection_id}: Subscription sent for {pair}");
                         }
                         
                         // Add a small delay between subscriptions
@@ -153,7 +152,7 @@ pub async fn hbit_websocket_handler(
                 
                 loop {
                     if app_state.should_reconnect(&connection_id) {
-                        error!("Hbit {}: Reconnection signaled, breaking main loop", connection_id);
+                        error!("Hbit {connection_id}: Reconnection signaled, breaking main loop");
                         break;
                     }
                     
@@ -248,13 +247,11 @@ pub async fn hbit_websocket_handler(
                                                         
                                                         // Skip if prices are invalid
                                                         if best_ask <= 0.0 || best_bid <= 0.0 {
-                                                            debug!("Hbit {}: Invalid prices for {}: ask={}, bid={}", 
-                                                                connection_id, normalized_symbol, best_ask, best_bid);
+                                                            debug!("Hbit {connection_id}: Invalid prices for {normalized_symbol}: ask={best_ask}, bid={best_bid}");
                                                             continue;
                                                         }
                                                         
-                                                        info!("Hbit {}: Received valid orderbook update for {}: ask={}, bid={}", 
-                                                             connection_id, prefixed_symbol, best_ask, best_bid);
+                                                        info!("Hbit {connection_id}: Received valid orderbook update for {prefixed_symbol}: ask={best_ask}, bid={best_bid}");
                                                         
                                                         // Update app state with orderbook data
                                                         if let Some(tx) = &app_state.orderbook_queue {
@@ -272,10 +269,9 @@ pub async fn hbit_websocket_handler(
                                                             };
                                                             
                                                             if let Err(e) = tx.send(update) {
-                                                                error!("Hbit {}: Failed to send orderbook update: {}", connection_id, e);
+                                                                error!("Hbit {connection_id}: Failed to send orderbook update: {e}");
                                                             } else {
-                                                                debug!("Hbit {}: Enqueued price update for {}: ask={}, bid={}", 
-                                                                     connection_id, prefixed_symbol, best_ask, best_bid);
+                                                                debug!("Hbit {connection_id}: Enqueued price update for {prefixed_symbol}: ask={best_ask}, bid={best_bid}");
                                                             }
                                                         } else {
                                                             app_state.price_data.insert(
@@ -297,7 +293,7 @@ pub async fn hbit_websocket_handler(
                                                 }
                                             }
                                         } else if type_str == "pong" {
-                                            debug!("Hbit {}: Received pong", connection_id);
+                                            debug!("Hbit {connection_id}: Received pong");
                                         }
                                     }
                                 }
@@ -315,34 +311,34 @@ pub async fn hbit_websocket_handler(
                                     debug!("Hbit {}: Received binary data ({} bytes)", connection_id, data.len());
                                 },
                                 Message::Ping(data) => {
-                                    debug!("Hbit {}: Received Ping, sending Pong", connection_id);
+                                    debug!("Hbit {connection_id}: Received Ping, sending Pong");
                                     let mut writer = write.lock().await;
                                     if let Err(e) = writer.send(Message::Pong(data)).await {
-                                        error!("Hbit {}: Failed to send Pong: {}", connection_id, e);
+                                        error!("Hbit {connection_id}: Failed to send Pong: {e}");
                                     }
                                 },
                                 Message::Pong(_) => {
-                                    debug!("Hbit {}: Received Pong", connection_id);
+                                    debug!("Hbit {connection_id}: Received Pong");
                                 },
                                 Message::Close(frame) => {
-                                    info!("Hbit {}: Received Close frame: {:?}", connection_id, frame);
+                                    info!("Hbit {connection_id}: Received Close frame: {frame:?}");
                                     break;
                                 },
                                 _ => {
-                                    debug!("Hbit {}: Received other message type", connection_id);
+                                    debug!("Hbit {connection_id}: Received other message type");
                                 }
                             }
                         },
                         Ok(Some(Err(e))) => {
                             consecutive_errors += 1;
-                            error!("Hbit {}: WebSocket error: {}", connection_id, e);
+                            error!("Hbit {connection_id}: WebSocket error: {e}");
                             if consecutive_errors >= 3 {
-                                error!("Hbit {}: Too many consecutive errors, reconnecting", connection_id);
+                                error!("Hbit {connection_id}: Too many consecutive errors, reconnecting");
                                 break;
                             }
                         },
                         Ok(None) => {
-                            info!("Hbit {}: WebSocket stream ended", connection_id);
+                            info!("Hbit {connection_id}: WebSocket stream ended");
                             break;
                         },
                         Err(_) => {
@@ -351,7 +347,7 @@ pub async fn hbit_websocket_handler(
                             
                             // Only log a warning if idle time exceeds a threshold
                             if idle_time > 10000 {
-                                warn!("Hbit {}: Read timeout - idle for {}ms", connection_id, idle_time);
+                                warn!("Hbit {connection_id}: Read timeout - idle for {idle_time}ms");
                                 
                                 // Try to send a ping to keep the connection alive
                                 if consecutive_timeouts == 1 {
@@ -359,23 +355,22 @@ pub async fn hbit_websocket_handler(
                                         "event": "ping"
                                     });
                                     
-                                    warn!("Hbit {}: Sending emergency ping", connection_id);
+                                    warn!("Hbit {connection_id}: Sending emergency ping");
                                     let mut writer = write.lock().await;
                                     if let Err(e) = writer.send(Message::Text(ping_msg.to_string())).await {
-                                        error!("Hbit {}: Failed to send emergency ping: {}", connection_id, e);
+                                        error!("Hbit {connection_id}: Failed to send emergency ping: {e}");
                                     }
                                 }
                             } else {
                                 // For expected short idle periods, just log at debug level
-                                debug!("Hbit {}: Short read timeout - idle for {}ms", 
-                                      connection_id, idle_time);
+                                debug!("Hbit {connection_id}: Short read timeout - idle for {idle_time}ms");
                                 
                                 // Reset consecutive_timeouts since this is normal behavior
                                 consecutive_timeouts = 0;
                             }
                             
                             if consecutive_timeouts >= 3 {
-                                error!("Hbit {}: Too many consecutive timeouts, reconnecting", connection_id);
+                                error!("Hbit {connection_id}: Too many consecutive timeouts, reconnecting");
                                 break;
                             }
                         }
@@ -384,7 +379,7 @@ pub async fn hbit_websocket_handler(
                     // Check connection staleness
                     let idle_time = app_state.get_connection_idle_time(&connection_id);
                     if idle_time > FORCE_RECONNECT_TIMEOUT as u64 {
-                        error!("Hbit {}: Connection stale ({}ms), forcing reconnect", connection_id, idle_time);
+                        error!("Hbit {connection_id}: Connection stale ({idle_time}ms), forcing reconnect");
                         break;
                     }
                     
@@ -396,20 +391,20 @@ pub async fn hbit_websocket_handler(
                 
                 // Clean up the ping task
                 ping_task.abort();
-                error!("Hbit {}: Session ended, reconnecting...", connection_id);
+                error!("Hbit {connection_id}: Session ended, reconnecting...");
             },
             Ok(Err(e)) => {
-                error!("Hbit {}: Failed to connect: {}", connection_id, e);
+                error!("Hbit {connection_id}: Failed to connect: {e}");
                 retry_count += 1;
             },
             Err(_) => {
-                error!("Hbit {}: Connection timeout", connection_id);
+                error!("Hbit {connection_id}: Connection timeout");
                 retry_count += 1;
             }
         }
         
         // Handle reconnection with exponential backoff
-        let delay = f64::min(0.5 * 1.5f64.powi(retry_count as i32), MAX_RECONNECT_DELAY);
+        let delay = f64::min(0.5 * 1.5f64.powi(retry_count), MAX_RECONNECT_DELAY);
         
         info!("Hbit {}: Reconnecting in {:.2} seconds (attempt {}/{})", 
              connection_id, delay, retry_count + 1, max_retries);
@@ -419,6 +414,6 @@ pub async fn hbit_websocket_handler(
         retry_count += 1;
     }
     
-    error!("Hbit {}: Failed to maintain connection after {} retries", connection_id, max_retries);
+    error!("Hbit {connection_id}: Failed to maintain connection after {max_retries} retries");
     Ok(())
 }

@@ -29,11 +29,11 @@ pub async fn batonex_websocket_handler(
     let max_retries = 10;
 
     while retry_count < max_retries {
-        info!("Batonex {}: Connecting to {}", connection_id, BATONEX_WS_URL);
+        info!("Batonex {connection_id}: Connecting to {BATONEX_WS_URL}");
         
         // Create request with required headers
         let mut request = BATONEX_WS_URL.into_client_request()
-            .map_err(|e| AppError::WebSocketError(format!("Failed to create request: {}", e)))?;
+            .map_err(|e| AppError::WebSocketError(format!("Failed to create request: {e}")))?;
         
         // Add standard headers
         request.headers_mut().insert(
@@ -44,7 +44,7 @@ pub async fn batonex_websocket_handler(
         // Connect with timeout
         match timeout(Duration::from_secs(15), connect_async(request)).await {
             Ok(Ok((ws_stream, _))) => {
-                info!("Batonex {}: Connection established", connection_id);
+                info!("Batonex {connection_id}: Connection established");
                 app_state.update_connection_timestamp(&connection_id);
                 let (write, mut read) = ws_stream.split();
                 let write = Arc::new(Mutex::new(write));
@@ -61,7 +61,7 @@ pub async fn batonex_websocket_handler(
                         interval.tick().await;
                         
                         if ping_app_state.should_reconnect(&ping_connection_id) {
-                            error!("Batonex {}: Reconnection signaled, terminating ping task", ping_connection_id);
+                            error!("Batonex {ping_connection_id}: Reconnection signaled, terminating ping task");
                             return;
                         }
                         
@@ -70,17 +70,17 @@ pub async fn batonex_websocket_handler(
                             "ping": chrono::Utc::now().timestamp_millis()
                         });
                         
-                        info!("Batonex {}: Sending heartbeat ping", ping_connection_id);
+                        info!("Batonex {ping_connection_id}: Sending heartbeat ping");
                         ping_app_state.update_connection_timestamp(&ping_connection_id);
                         
                         let mut writer = ping_write_clone.lock().await;
                         if let Err(e) = writer.send(Message::Text(ping_msg.to_string())).await {
-                            error!("Batonex {}: Failed to send ping: {}", ping_connection_id, e);
+                            error!("Batonex {ping_connection_id}: Failed to send ping: {e}");
                             break;
                         }
                     }
                     
-                    warn!("Batonex {}: Ping task terminated", ping_connection_id);
+                    warn!("Batonex {ping_connection_id}: Ping task terminated");
                 });
 
                 // Subscribe to symbols for market depth
@@ -108,14 +108,14 @@ pub async fn batonex_websocket_handler(
                             }
                         });
                         
-                        info!("Batonex {}: Subscribing to depth for {}", connection_id, symbol_upper);
+                        info!("Batonex {connection_id}: Subscribing to depth for {symbol_upper}");
                         
                         let mut writer = write.lock().await;
                         if let Err(e) = writer.send(Message::Text(sub_msg.to_string())).await {
-                            error!("Batonex {}: Failed to send subscription for {}: {}", connection_id, symbol_upper, e);
+                            error!("Batonex {connection_id}: Failed to send subscription for {symbol_upper}: {e}");
                             continue;
                         } else {
-                            info!("Batonex {}: Subscription sent for {}", connection_id, symbol_upper);
+                            info!("Batonex {connection_id}: Subscription sent for {symbol_upper}");
                         }
                         
                         // Add a small delay between subscriptions
@@ -132,7 +132,7 @@ pub async fn batonex_websocket_handler(
                 
                 loop {
                     if app_state.should_reconnect(&connection_id) {
-                        error!("Batonex {}: Reconnection signaled, breaking main loop", connection_id);
+                        error!("Batonex {connection_id}: Reconnection signaled, breaking main loop");
                         break;
                     }
                     
@@ -244,13 +244,11 @@ pub async fn batonex_websocket_handler(
                                                     
                                                     // Skip if prices are invalid
                                                     if best_ask <= 0.0 || best_bid <= 0.0 {
-                                                        debug!("Batonex {}: Invalid prices for {}: ask={}, bid={}", 
-                                                            connection_id, symbol, best_ask, best_bid);
+                                                        debug!("Batonex {connection_id}: Invalid prices for {symbol}: ask={best_ask}, bid={best_bid}");
                                                         continue;
                                                     }
                                                     
-                                                    info!("Batonex {}: Received valid orderbook update for {}: ask={}, bid={}", 
-                                                        connection_id, prefixed_symbol, best_ask, best_bid);
+                                                    info!("Batonex {connection_id}: Received valid orderbook update for {prefixed_symbol}: ask={best_ask}, bid={best_bid}");
                                                     
                                                     // Update app state with orderbook data
                                                     if let Some(tx) = &app_state.orderbook_queue {
@@ -268,10 +266,9 @@ pub async fn batonex_websocket_handler(
                                                         };
                                                         
                                                         if let Err(e) = tx.send(update) {
-                                                            error!("Batonex {}: Failed to send orderbook update: {}", connection_id, e);
+                                                            error!("Batonex {connection_id}: Failed to send orderbook update: {e}");
                                                         } else {
-                                                            debug!("Batonex {}: Enqueued price update for {}: ask={}, bid={}", 
-                                                                connection_id, prefixed_symbol, best_ask, best_bid);
+                                                            debug!("Batonex {connection_id}: Enqueued price update for {prefixed_symbol}: ask={best_ask}, bid={best_bid}");
                                                         }
                                                     } else {
                                                         app_state.price_data.insert(
@@ -308,58 +305,58 @@ pub async fn batonex_websocket_handler(
                                     debug!("Batonex {}: Received binary data ({} bytes)", connection_id, data.len());
                                 },
                                 Message::Ping(data) => {
-                                    debug!("Batonex {}: Received Ping, sending Pong", connection_id);
+                                    debug!("Batonex {connection_id}: Received Ping, sending Pong");
                                     let mut writer = write.lock().await;
                                     if let Err(e) = writer.send(Message::Pong(data)).await {
-                                        error!("Batonex {}: Failed to send Pong: {}", connection_id, e);
+                                        error!("Batonex {connection_id}: Failed to send Pong: {e}");
                                     }
                                 },
                                 Message::Pong(_) => {
-                                    debug!("Batonex {}: Received Pong", connection_id);
+                                    debug!("Batonex {connection_id}: Received Pong");
                                 },
                                 Message::Close(frame) => {
-                                    info!("Batonex {}: Received Close frame: {:?}", connection_id, frame);
+                                    info!("Batonex {connection_id}: Received Close frame: {frame:?}");
                                     break;
                                 },
                                 _ => {
-                                    debug!("Batonex {}: Received other message type", connection_id);
+                                    debug!("Batonex {connection_id}: Received other message type");
                                 }
                             }
                         },
                         Ok(Some(Err(e))) => {
                             consecutive_errors += 1;
-                            error!("Batonex {}: WebSocket error: {}", connection_id, e);
+                            error!("Batonex {connection_id}: WebSocket error: {e}");
                             if consecutive_errors >= 3 {
-                                error!("Batonex {}: Too many consecutive errors, reconnecting", connection_id);
+                                error!("Batonex {connection_id}: Too many consecutive errors, reconnecting");
                                 break;
                             }
                         },
                         Ok(None) => {
-                            info!("Batonex {}: WebSocket stream ended", connection_id);
+                            info!("Batonex {connection_id}: WebSocket stream ended");
                             break;
                         },
                         Err(_) => {
                             consecutive_timeouts += 1;
                             let idle_time = app_state.get_connection_idle_time(&connection_id);
-                            warn!("Batonex {}: Read timeout - idle for {}ms", connection_id, idle_time);
+                            warn!("Batonex {connection_id}: Read timeout - idle for {idle_time}ms");
                             
                             // Try to send a ping to keep the connection alive
                             if consecutive_timeouts == 1 {
                                 // Send a ping message
-                                warn!("Batonex {}: Sending emergency ping", connection_id);
+                                warn!("Batonex {connection_id}: Sending emergency ping");
                                 let ping_msg = json!({
                                     "ping": chrono::Utc::now().timestamp_millis()
                                 });
                                 
                                 let mut writer = write.lock().await;
                                 if let Err(e) = writer.send(Message::Text(ping_msg.to_string())).await {
-                                    error!("Batonex {}: Failed to send emergency ping: {}", connection_id, e);
+                                    error!("Batonex {connection_id}: Failed to send emergency ping: {e}");
                                 }
                             }
                             
                             // Reduced from 3 to 2
                             if consecutive_timeouts >= 2 {
-                                error!("Batonex {}: Too many consecutive timeouts, reconnecting", connection_id);
+                                error!("Batonex {connection_id}: Too many consecutive timeouts, reconnecting");
                                 break;
                             }
                         }
@@ -368,7 +365,7 @@ pub async fn batonex_websocket_handler(
                     // Check connection staleness
                     let idle_time = app_state.get_connection_idle_time(&connection_id);
                     if idle_time > FORCE_RECONNECT_TIMEOUT as u64 {
-                        error!("Batonex {}: Connection stale ({}ms), forcing reconnect", connection_id, idle_time);
+                        error!("Batonex {connection_id}: Connection stale ({idle_time}ms), forcing reconnect");
                         break;
                     }
                     
@@ -380,20 +377,20 @@ pub async fn batonex_websocket_handler(
                 
                 // Clean up the ping task before reconnecting
                 ping_task.abort();
-                error!("Batonex {}: Session ended, reconnecting...", connection_id);
+                error!("Batonex {connection_id}: Session ended, reconnecting...");
             },
             Ok(Err(e)) => {
-                error!("Batonex {}: Failed to connect: {}", connection_id, e);
+                error!("Batonex {connection_id}: Failed to connect: {e}");
                 retry_count += 1;
             },
             Err(_) => {
-                error!("Batonex {}: Connection timeout", connection_id);
+                error!("Batonex {connection_id}: Connection timeout");
                 retry_count += 1;
             }
         }
         
         // Handle reconnection with exponential backoff
-        let delay = f64::min(0.5 * 1.5f64.powi(retry_count as i32), MAX_RECONNECT_DELAY);
+        let delay = f64::min(0.5 * 1.5f64.powi(retry_count), MAX_RECONNECT_DELAY);
         
         info!("Batonex {}: Reconnecting in {:.2} seconds (attempt {}/{})", 
              connection_id, delay, retry_count + 1, max_retries);
@@ -403,6 +400,6 @@ pub async fn batonex_websocket_handler(
         retry_count += 1;
     }
     
-    error!("Batonex {}: Failed to maintain connection after {} retries", connection_id, max_retries);
+    error!("Batonex {connection_id}: Failed to maintain connection after {max_retries} retries");
     Ok(())
 }

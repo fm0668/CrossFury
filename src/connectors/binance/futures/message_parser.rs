@@ -2,8 +2,6 @@
 //! 
 //! 解析WebSocket接收到的各种期货数据消息
 
-use crate::connectors::binance::futures::websocket::{AccountEvent, FuturesBalance, FuturesPosition, FuturesOrder};
-use crate::connectors::binance::futures::config::PositionSide;
 use crate::types::market_data::{MarketDataEvent, DepthUpdate, TradeUpdate, KlineUpdate, TickerUpdate, MarkPriceUpdate, OpenInterestUpdate, FundingRateUpdate, PriceLevel};
 use crate::types::trading::{TradeEvent, OrderUpdate as TradingOrderUpdate, TradeExecution, PositionUpdate as TradingPositionUpdate, BalanceUpdate as TradingBalanceUpdate, OrderSide, OrderType, OrderStatus, PositionSide as TradingPositionSide, TimeInForce};
 use crate::core::AppError;
@@ -11,10 +9,9 @@ use crate::core::AppError;
 // 定义Result类型别名
 pub type Result<T> = std::result::Result<T, AppError>;
 
-use serde_json::{Value, from_value};
-use log::{debug, warn, error};
-use chrono::{DateTime, Utc, TimeZone};
-use std::collections::HashMap;
+use serde_json::Value;
+use log::{debug, warn};
+use chrono::TimeZone;
 
 /// Binance期货消息解析器
 pub struct BinanceFuturesMessageParser;
@@ -36,7 +33,7 @@ impl BinanceFuturesMessageParser {
     /// 解析WebSocket消息
     pub fn parse_message(message: &str) -> Result<Vec<ParsedMessage>> {
         let value: Value = serde_json::from_str(message)
-            .map_err(|e| AppError::ParseError(format!("JSON解析失败: {}", e)))?;
+            .map_err(|e| AppError::ParseError(format!("JSON解析失败: {e}")))?;
         
         let mut results = Vec::new();
         
@@ -53,7 +50,7 @@ impl BinanceFuturesMessageParser {
             let error_msg = error.get("msg")
                 .and_then(|m| m.as_str())
                 .unwrap_or("未知错误");
-            warn!("收到错误消息: {}", error_msg);
+            warn!("收到错误消息: {error_msg}");
             return Ok(vec![ParsedMessage::Error(error_msg.to_string())]);
         }
         
@@ -93,7 +90,7 @@ impl BinanceFuturesMessageParser {
         } else if stream == "!markPrice@arr" {
             Self::parse_funding_rate_update(data)
         } else {
-            Err(AppError::ParseError(format!("未知的数据流类型: {}", stream)))
+            Err(AppError::ParseError(format!("未知的数据流类型: {stream}")))
         }
     }
     
@@ -439,7 +436,7 @@ impl BinanceFuturesMessageParser {
             "ORDER_TRADE_UPDATE" => Self::parse_order_update(data),
             "MARGIN_CALL" => Self::parse_margin_call(data),
             "ACCOUNT_CONFIG_UPDATE" => Self::parse_account_config_update(data),
-            _ => Err(AppError::ParseError(format!("未知的用户数据事件类型: {}", event_type))),
+            _ => Err(AppError::ParseError(format!("未知的用户数据事件类型: {event_type}"))),
         }
     }
     
@@ -510,13 +507,13 @@ impl BinanceFuturesMessageParser {
         }
         
         if !balance_updates.is_empty() {
-            for balance_update in balance_updates {
+            if let Some(balance_update) = balance_updates.into_iter().next() {
                 return Ok(ParsedMessage::Trading(TradeEvent::BalanceUpdate(balance_update)));
             }
         }
         
         if !position_updates.is_empty() {
-            for position_update in position_updates {
+            if let Some(position_update) = position_updates.into_iter().next() {
                 return Ok(ParsedMessage::Trading(TradeEvent::PositionUpdate(position_update)));
             }
         }
@@ -634,12 +631,12 @@ impl BinanceFuturesMessageParser {
                 symbol: symbol.to_string(),
                 trade_id: trade_id.to_string(),
                 order_id: order_id.to_string(),
-                side: order_update.side.clone(),
+                side: order_update.side,
                 quantity: last_executed_quantity,
                 price: last_executed_price,
                 commission,
                 commission_asset: commission_asset.to_string(),
-                timestamp: order_update.timestamp as u64,
+                timestamp: order_update.timestamp,
                 is_maker: false, // 需要从订单数据中获取
             };
             
@@ -652,14 +649,14 @@ impl BinanceFuturesMessageParser {
     /// 解析保证金追缴
     fn parse_margin_call(data: &Value) -> Result<ParsedMessage> {
         // 这里可以根据需要实现保证金追缴的解析逻辑
-        warn!("收到保证金追缴通知: {:?}", data);
+        warn!("收到保证金追缴通知: {data:?}");
         Ok(ParsedMessage::Error("保证金追缴".to_string()))
     }
     
     /// 解析账户配置更新
     fn parse_account_config_update(data: &Value) -> Result<ParsedMessage> {
         // 这里可以根据需要实现账户配置更新的解析逻辑
-        debug!("收到账户配置更新: {:?}", data);
+        debug!("收到账户配置更新: {data:?}");
         Ok(ParsedMessage::SubscriptionConfirm)
     }
 }

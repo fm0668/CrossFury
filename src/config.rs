@@ -18,7 +18,7 @@ pub fn get_config() -> &'static Config {
     CONFIG.get().unwrap_or_else(|| {
         // Use a static reference to the default configuration.
         static DEFAULT_CONFIG: once_cell::sync::OnceCell<Config> = once_cell::sync::OnceCell::new();
-        DEFAULT_CONFIG.get_or_init(|| Config::default())
+        DEFAULT_CONFIG.get_or_init(Config::default)
     })
 }
 
@@ -27,19 +27,19 @@ pub fn init_config<P: AsRef<Path>>(path: P) -> Result<(), String> {
     let file_format = path.as_ref().extension().and_then(|os| os.to_str());
     
     let mut file = File::open(path.as_ref())
-        .map_err(|e| format!("Failed to open config file: {}", e))?;
+        .map_err(|e| format!("Failed to open config file: {e}"))?;
     
     let mut contents = String::new();
     file.read_to_string(&mut contents)
-        .map_err(|e| format!("Failed to read config file: {}", e))?;
+        .map_err(|e| format!("Failed to read config file: {e}"))?;
     
     let config = match file_format {
         Some("toml") => toml::from_str(&contents)
-            .map_err(|e| format!("Failed to parse TOML config: {:?}", e)),
+            .map_err(|e| format!("Failed to parse TOML config: {e:?}")),
         Some("json") => serde_json::from_str(&contents)
-            .map_err(|e| format!("Failed to parse JSON config: {:?}", e)),
+            .map_err(|e| format!("Failed to parse JSON config: {e:?}")),
         Some("yaml") | Some("yml") => serde_yaml::from_str(&contents)
-            .map_err(|e| format!("Failed to parse YAML config: {:?}", e)),
+            .map_err(|e| format!("Failed to parse YAML config: {e:?}")),
         _ => Err("Unsupported config file format".to_string()),
     }?;
     
@@ -170,17 +170,17 @@ impl Config {
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, String> {
         let file_format = path.as_ref().extension().and_then(|os| os.to_str());
         let mut file = File::open(path.as_ref())
-            .map_err(|e| format!("Failed to open config file: {}", e))?;
+            .map_err(|e| format!("Failed to open config file: {e}"))?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)
-            .map_err(|e| format!("Failed to read config file: {}", e))?;
+            .map_err(|e| format!("Failed to read config file: {e}"))?;
         match file_format {
             Some("toml") => toml::from_str(&contents)
-                .map_err(|e| format!("Failed to parse TOML config: {:?}", e)),
+                .map_err(|e| format!("Failed to parse TOML config: {e:?}")),
             Some("json") => serde_json::from_str(&contents)
-                .map_err(|e| format!("Failed to parse JSON config: {:?}", e)),
+                .map_err(|e| format!("Failed to parse JSON config: {e:?}")),
             Some("yaml") | Some("yml") => serde_yaml::from_str(&contents)
-                .map_err(|e| format!("Failed to parse YAML config: {:?}", e)),
+                .map_err(|e| format!("Failed to parse YAML config: {e:?}")),
             _ => Err("Unsupported config file format".to_string()),
         }
     }

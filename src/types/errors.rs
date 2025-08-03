@@ -46,25 +46,25 @@ pub enum ConnectorError {
 impl fmt::Display for ConnectorError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ConnectorError::ConnectionFailed(msg) => write!(f, "Connection failed: {}", msg),
-            ConnectorError::ConnectionLost(msg) => write!(f, "Connection lost: {}", msg),
-            ConnectorError::WebSocketError(msg) => write!(f, "WebSocket error: {}", msg),
-            ConnectorError::AuthenticationFailed(msg) => write!(f, "Authentication failed: {}", msg),
-            ConnectorError::InvalidCredentials(msg) => write!(f, "Invalid credentials: {}", msg),
-            ConnectorError::SubscriptionFailed(msg) => write!(f, "Subscription failed: {}", msg),
-            ConnectorError::InvalidSymbol(msg) => write!(f, "Invalid symbol: {}", msg),
-            ConnectorError::OrderPlacementFailed(msg) => write!(f, "Order placement failed: {}", msg),
-            ConnectorError::OrderCancellationFailed(msg) => write!(f, "Order cancellation failed: {}", msg),
-            ConnectorError::InsufficientBalance(msg) => write!(f, "Insufficient balance: {}", msg),
-            ConnectorError::InvalidOrderParameters(msg) => write!(f, "Invalid order parameters: {}", msg),
-            ConnectorError::DataParsingError(msg) => write!(f, "Data parsing error: {}", msg),
-            ConnectorError::InvalidResponse(msg) => write!(f, "Invalid response: {}", msg),
-            ConnectorError::NetworkError(msg) => write!(f, "Network error: {}", msg),
-            ConnectorError::TimeoutError(msg) => write!(f, "Timeout error: {}", msg),
-            ConnectorError::RateLimitExceeded(msg) => write!(f, "Rate limit exceeded: {}", msg),
-            ConnectorError::ExchangeNotFound(msg) => write!(f, "Exchange not found: {}", msg),
-            ConnectorError::ServiceUnavailable(msg) => write!(f, "Service unavailable: {}", msg),
-            ConnectorError::InternalError(msg) => write!(f, "Internal error: {}", msg),
+            ConnectorError::ConnectionFailed(msg) => write!(f, "Connection failed: {msg}"),
+            ConnectorError::ConnectionLost(msg) => write!(f, "Connection lost: {msg}"),
+            ConnectorError::WebSocketError(msg) => write!(f, "WebSocket error: {msg}"),
+            ConnectorError::AuthenticationFailed(msg) => write!(f, "Authentication failed: {msg}"),
+            ConnectorError::InvalidCredentials(msg) => write!(f, "Invalid credentials: {msg}"),
+            ConnectorError::SubscriptionFailed(msg) => write!(f, "Subscription failed: {msg}"),
+            ConnectorError::InvalidSymbol(msg) => write!(f, "Invalid symbol: {msg}"),
+            ConnectorError::OrderPlacementFailed(msg) => write!(f, "Order placement failed: {msg}"),
+            ConnectorError::OrderCancellationFailed(msg) => write!(f, "Order cancellation failed: {msg}"),
+            ConnectorError::InsufficientBalance(msg) => write!(f, "Insufficient balance: {msg}"),
+            ConnectorError::InvalidOrderParameters(msg) => write!(f, "Invalid order parameters: {msg}"),
+            ConnectorError::DataParsingError(msg) => write!(f, "Data parsing error: {msg}"),
+            ConnectorError::InvalidResponse(msg) => write!(f, "Invalid response: {msg}"),
+            ConnectorError::NetworkError(msg) => write!(f, "Network error: {msg}"),
+            ConnectorError::TimeoutError(msg) => write!(f, "Timeout error: {msg}"),
+            ConnectorError::RateLimitExceeded(msg) => write!(f, "Rate limit exceeded: {msg}"),
+            ConnectorError::ExchangeNotFound(msg) => write!(f, "Exchange not found: {msg}"),
+            ConnectorError::ServiceUnavailable(msg) => write!(f, "Service unavailable: {msg}"),
+            ConnectorError::InternalError(msg) => write!(f, "Internal error: {msg}"),
             ConnectorError::TradingNotImplemented => write!(f, "Trading functionality not implemented"),
         }
     }
@@ -85,11 +85,11 @@ pub enum ExecutionError {
 impl fmt::Display for ExecutionError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ExecutionError::ConnectorError(err) => write!(f, "Connector error: {}", err),
-            ExecutionError::RoutingError(msg) => write!(f, "Routing error: {}", msg),
-            ExecutionError::RiskCheckFailed(msg) => write!(f, "Risk check failed: {}", msg),
-            ExecutionError::PositionError(msg) => write!(f, "Position error: {}", msg),
-            ExecutionError::InternalError(msg) => write!(f, "Internal error: {}", msg),
+            ExecutionError::ConnectorError(err) => write!(f, "Connector error: {err}"),
+            ExecutionError::RoutingError(msg) => write!(f, "Routing error: {msg}"),
+            ExecutionError::RiskCheckFailed(msg) => write!(f, "Risk check failed: {msg}"),
+            ExecutionError::PositionError(msg) => write!(f, "Position error: {msg}"),
+            ExecutionError::InternalError(msg) => write!(f, "Internal error: {msg}"),
         }
     }
 }
@@ -109,11 +109,11 @@ pub enum RiskError {
 impl fmt::Display for RiskError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            RiskError::PositionLimitExceeded(msg) => write!(f, "Position limit exceeded: {}", msg),
-            RiskError::OrderSizeLimitExceeded(msg) => write!(f, "Order size limit exceeded: {}", msg),
-            RiskError::ExposureLimitExceeded(msg) => write!(f, "Exposure limit exceeded: {}", msg),
-            RiskError::InvalidRiskParameters(msg) => write!(f, "Invalid risk parameters: {}", msg),
-            RiskError::InternalError(msg) => write!(f, "Internal error: {}", msg),
+            RiskError::PositionLimitExceeded(msg) => write!(f, "Position limit exceeded: {msg}"),
+            RiskError::OrderSizeLimitExceeded(msg) => write!(f, "Order size limit exceeded: {msg}"),
+            RiskError::ExposureLimitExceeded(msg) => write!(f, "Exposure limit exceeded: {msg}"),
+            RiskError::InvalidRiskParameters(msg) => write!(f, "Invalid risk parameters: {msg}"),
+            RiskError::InternalError(msg) => write!(f, "Internal error: {msg}"),
         }
     }
 }
@@ -133,11 +133,11 @@ pub enum PositionError {
 impl fmt::Display for PositionError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            PositionError::PositionNotFound(msg) => write!(f, "Position not found: {}", msg),
-            PositionError::InvalidPositionData(msg) => write!(f, "Invalid position data: {}", msg),
-            PositionError::SyncError(msg) => write!(f, "Sync error: {}", msg),
-            PositionError::CalculationError(msg) => write!(f, "Calculation error: {}", msg),
-            PositionError::InternalError(msg) => write!(f, "Internal error: {}", msg),
+            PositionError::PositionNotFound(msg) => write!(f, "Position not found: {msg}"),
+            PositionError::InvalidPositionData(msg) => write!(f, "Invalid position data: {msg}"),
+            PositionError::SyncError(msg) => write!(f, "Sync error: {msg}"),
+            PositionError::CalculationError(msg) => write!(f, "Calculation error: {msg}"),
+            PositionError::InternalError(msg) => write!(f, "Internal error: {msg}"),
         }
     }
 }

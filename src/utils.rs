@@ -47,8 +47,7 @@ pub fn parse_perpetual_symbol(symbol: &str) -> Option<(String, String)> {
     
     // If we couldn't parse it as a USDT-margined contract, try generic parsing
     for &quote_token in TOP_TOKENS.iter().rev() {
-        if symbol.ends_with(quote_token) {
-            let base_token = &symbol[..symbol.len() - quote_token.len()];
+        if let Some(base_token) = symbol.strip_suffix(quote_token) {
             if TOP_TOKENS_SET.contains(base_token) {
                 return Some((base_token.to_string(), quote_token.to_string()));
             }
@@ -110,7 +109,7 @@ pub fn analyze_exchange_token_distribution(app_state: &AppState) {
             // Add to the exchange's token set
             exchange_tokens
                 .entry(exchange)
-                .or_insert_with(HashSet::new)
+                .or_default()
                 .insert(symbol);
         }
     }

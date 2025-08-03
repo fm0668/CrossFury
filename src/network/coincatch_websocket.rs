@@ -55,11 +55,11 @@ pub async fn coincatch_websocket_handler(
     let max_retries = 10;
 
     while retry_count < max_retries {
-        info!("Coin Catch {}: Connecting to {}", connection_id, COINCATCH_WS_URL);
+        info!("Coin Catch {connection_id}: Connecting to {COINCATCH_WS_URL}");
         
         // Create request with required headers
         let mut request = COINCATCH_WS_URL.into_client_request()
-            .map_err(|e| AppError::WebSocketError(format!("Failed to create request: {}", e)))?;
+            .map_err(|e| AppError::WebSocketError(format!("Failed to create request: {e}")))?;
         
         // Add standard headers
         request.headers_mut().insert(
@@ -70,7 +70,7 @@ pub async fn coincatch_websocket_handler(
         // Connect with timeout
         match timeout(Duration::from_secs(15), connect_async(request)).await {
             Ok(Ok((ws_stream, _))) => {
-                info!("Coin Catch {}: Connection established", connection_id);
+                info!("Coin Catch {connection_id}: Connection established");
                 app_state.update_connection_timestamp(&connection_id);
                 let (write, mut read) = ws_stream.split();
                 let write = Arc::new(Mutex::new(write));
@@ -87,30 +87,29 @@ pub async fn coincatch_websocket_handler(
                         interval.tick().await;
                         
                         if ping_app_state.should_reconnect(&ping_connection_id) {
-                            error!("Coin Catch {}: Reconnection signaled, terminating ping task", ping_connection_id);
+                            error!("Coin Catch {ping_connection_id}: Reconnection signaled, terminating ping task");
                             return;
                         }
                         
                         // Send a ping message
-                        info!("Coin Catch {}: Sending heartbeat ping", ping_connection_id);
+                        info!("Coin Catch {ping_connection_id}: Sending heartbeat ping");
                         ping_app_state.update_connection_timestamp(&ping_connection_id);
                         
                         let mut writer = write_clone.lock().await;
                         if let Err(e) = writer.send(Message::Text("ping".to_string())).await {
-                            error!("Coin Catch {}: Failed to send ping: {}", ping_connection_id, e);
+                            error!("Coin Catch {ping_connection_id}: Failed to send ping: {e}");
                             break;
                         }
                         
                         // Check if connection is stale
                         let idle_time = ping_app_state.get_connection_idle_time(&ping_connection_id);
                         if idle_time > STALE_CONNECTION_TIMEOUT as u64 {
-                            error!("Coin Catch {}: Connection stale for {}ms, terminating ping task", 
-                                  ping_connection_id, idle_time);
+                            error!("Coin Catch {ping_connection_id}: Connection stale for {idle_time}ms, terminating ping task");
                             break;
                         }
                     }
                     
-                    warn!("Coin Catch {}: Ping task terminated", ping_connection_id);
+                    warn!("Coin Catch {ping_connection_id}: Ping task terminated");
                 });
 
                 // Subscribe to symbols that are likely to be supported
@@ -173,12 +172,11 @@ pub async fn coincatch_websocket_handler(
                         ]
                     });
                     
-                    debug!("Coin Catch {}: Subscribing to {}", connection_id, symbol);
+                    debug!("Coin Catch {connection_id}: Subscribing to {symbol}");
                     
                     let mut writer = write.lock().await;
                     if let Err(e) = writer.send(Message::Text(sub_msg.to_string())).await {
-                        error!("Coin Catch {}: Failed to send subscription for {}: {}", 
-                              connection_id, symbol, e);
+                        error!("Coin Catch {connection_id}: Failed to send subscription for {symbol}: {e}");
                         continue;
                     }
                     
@@ -195,7 +193,7 @@ pub async fn coincatch_websocket_handler(
                 
                 loop {
                     if app_state.should_reconnect(&connection_id) {
-                        error!("Coin Catch {}: Reconnection signaled, breaking main loop", connection_id);
+                        error!("Coin Catch {connection_id}: Reconnection signaled, breaking main loop");
                         break;
                     }
                     
@@ -210,7 +208,7 @@ pub async fn coincatch_websocket_handler(
                             
                             // Handle plain text "pong" response
                             if text == "pong" {
-                                debug!("Coin Catch {}: Received pong response", connection_id);
+                                debug!("Coin Catch {connection_id}: Received pong response");
                                 app_state.update_connection_timestamp(&connection_id);
                                 continue;
                             }
@@ -226,8 +224,7 @@ pub async fn coincatch_websocket_handler(
                                         if let Some(arg) = json_msg.get("arg") {
                                             let channel = arg.get("channel").and_then(|c| c.as_str()).unwrap_or("");
                                             let inst_id = arg.get("instId").and_then(|i| i.as_str()).unwrap_or("");
-                                            info!("Coin Catch {}: Successfully subscribed to {} for {}", 
-                                                connection_id, channel, inst_id);
+                                            info!("Coin Catch {connection_id}: Successfully subscribed to {channel} for {inst_id}");
                                                 
                                             // Add to confirmed symbols list
                                             let mut confirmed_guard = confirmed_symbols.lock().await;
@@ -254,8 +251,7 @@ pub async fn coincatch_websocket_handler(
                                                     let mut rejected_guard = rejected_symbols.lock().await;
                                                     if !rejected_guard.contains(&symbol) {
                                                         // Log only the first time we see this symbol rejected
-                                                        warn!("Coin Catch {}: Symbol {} doesn't exist, will not try again", 
-                                                             connection_id, symbol);
+                                                        warn!("Coin Catch {connection_id}: Symbol {symbol} doesn't exist, will not try again");
                                                         rejected_guard.insert(symbol);
                                                     }
                                                 }
@@ -267,8 +263,7 @@ pub async fn coincatch_websocket_handler(
                                     }
                                     
                                     // Log other errors normally
-                                    error!("Coin Catch {}: Error response: code={}, msg={}", 
-                                         connection_id, code, error_msg);
+                                    error!("Coin Catch {connection_id}: Error response: code={code}, msg={error_msg}");
                                     continue;
                                 }
                                 
@@ -368,8 +363,7 @@ pub async fn coincatch_websocket_handler(
                                                     
                                                     // Skip if prices are invalid
                                                     if best_ask <= 0.0 || best_bid <= 0.0 {
-                                                        debug!("Coin Catch {}: Invalid prices for {}: ask={}, bid={}", 
-                                                            connection_id, inst_id, best_ask, best_bid);
+                                                        debug!("Coin Catch {connection_id}: Invalid prices for {inst_id}: ask={best_ask}, bid={best_bid}");
                                                         continue;
                                                     }
                                                     
@@ -378,8 +372,7 @@ pub async fn coincatch_websocket_handler(
                                                         let mut confirmed_guard = confirmed_symbols.lock().await;
                                                         if !confirmed_guard.contains(&normalized_symbol) {
                                                             confirmed_guard.insert(normalized_symbol.clone());
-                                                            info!("Coin Catch {}: Received data for symbol {}", 
-                                                                connection_id, normalized_symbol);
+                                                            info!("Coin Catch {connection_id}: Received data for symbol {normalized_symbol}");
                                                         }
                                                     }
                                                     
@@ -399,10 +392,9 @@ pub async fn coincatch_websocket_handler(
                                                         };
                                                         
                                                         if let Err(e) = tx.send(update) {
-                                                            error!("Coin Catch {}: Failed to send orderbook update: {}", connection_id, e);
+                                                            error!("Coin Catch {connection_id}: Failed to send orderbook update: {e}");
                                                         } else {
-                                                            debug!("Coin Catch {}: Enqueued price update for {}: ask={}, bid={}", 
-                                                                connection_id, prefixed_symbol, best_ask, best_bid);
+                                                            debug!("Coin Catch {connection_id}: Enqueued price update for {prefixed_symbol}: ask={best_ask}, bid={best_bid}");
                                                         }
                                                     } else {
                                                         app_state.price_data.insert(
@@ -439,52 +431,52 @@ pub async fn coincatch_websocket_handler(
                                     debug!("Coin Catch {}: Received binary data ({} bytes)", connection_id, data.len());
                                 },
                                 Message::Ping(data) => {
-                                    debug!("Coin Catch {}: Received Ping, sending Pong", connection_id);
+                                    debug!("Coin Catch {connection_id}: Received Ping, sending Pong");
                                     let mut writer = write.lock().await;
                                     if let Err(e) = writer.send(Message::Pong(data)).await {
-                                        error!("Coin Catch {}: Failed to send Pong: {}", connection_id, e);
+                                        error!("Coin Catch {connection_id}: Failed to send Pong: {e}");
                                     }
                                 },
                                 Message::Pong(_) => {
-                                    debug!("Coin Catch {}: Received Pong", connection_id);
+                                    debug!("Coin Catch {connection_id}: Received Pong");
                                 },
                                 Message::Close(frame) => {
-                                    info!("Coin Catch {}: Received Close frame: {:?}", connection_id, frame);
+                                    info!("Coin Catch {connection_id}: Received Close frame: {frame:?}");
                                     break;
                                 },
                                 _ => {
-                                    debug!("Coin Catch {}: Received other message type", connection_id);
+                                    debug!("Coin Catch {connection_id}: Received other message type");
                                 }
                             }
                         },
                         Ok(Some(Err(e))) => {
                             consecutive_errors += 1;
-                            error!("Coin Catch {}: WebSocket error: {}", connection_id, e);
+                            error!("Coin Catch {connection_id}: WebSocket error: {e}");
                             if consecutive_errors >= 3 {
-                                error!("Coin Catch {}: Too many consecutive errors, reconnecting", connection_id);
+                                error!("Coin Catch {connection_id}: Too many consecutive errors, reconnecting");
                                 break;
                             }
                         },
                         Ok(None) => {
-                            info!("Coin Catch {}: WebSocket stream ended", connection_id);
+                            info!("Coin Catch {connection_id}: WebSocket stream ended");
                             break;
                         },
                         Err(_) => {
                             consecutive_timeouts += 1;
                             let idle_time = app_state.get_connection_idle_time(&connection_id);
-                            warn!("Coin Catch {}: Read timeout - idle for {}ms", connection_id, idle_time);
+                            warn!("Coin Catch {connection_id}: Read timeout - idle for {idle_time}ms");
                             
                             // Try to send a ping to keep the connection alive
                             if consecutive_timeouts == 1 {
-                                warn!("Coin Catch {}: Sending emergency ping", connection_id);
+                                warn!("Coin Catch {connection_id}: Sending emergency ping");
                                 let mut writer = write.lock().await;
                                 if let Err(e) = writer.send(Message::Text("ping".to_string())).await {
-                                    error!("Coin Catch {}: Failed to send emergency ping: {}", connection_id, e);
+                                    error!("Coin Catch {connection_id}: Failed to send emergency ping: {e}");
                                 }
                             }
                             
                             if consecutive_timeouts >= 3 {
-                                error!("Coin Catch {}: Too many consecutive timeouts, reconnecting", connection_id);
+                                error!("Coin Catch {connection_id}: Too many consecutive timeouts, reconnecting");
                                 break;
                             }
                         }
@@ -493,7 +485,7 @@ pub async fn coincatch_websocket_handler(
                     // Check connection staleness
                     let idle_time = app_state.get_connection_idle_time(&connection_id);
                     if idle_time > FORCE_RECONNECT_TIMEOUT as u64 {
-                        error!("Coin Catch {}: Connection stale ({}ms), forcing reconnect", connection_id, idle_time);
+                        error!("Coin Catch {connection_id}: Connection stale ({idle_time}ms), forcing reconnect");
                         break;
                     }
                     
@@ -512,23 +504,22 @@ pub async fn coincatch_websocket_handler(
                     confirmed_guard.len()
                 };
                 
-                info!("Coin Catch {}: Session ended with {} confirmed working symbols", 
-                     connection_id, confirmed_count);
+                info!("Coin Catch {connection_id}: Session ended with {confirmed_count} confirmed working symbols");
                 
                 break;  // Exit the retry loop if we successfully connected and processed
             },
             Ok(Err(e)) => {
-                error!("Coin Catch {}: Failed to connect: {}", connection_id, e);
+                error!("Coin Catch {connection_id}: Failed to connect: {e}");
                 retry_count += 1;
             },
             Err(_) => {
-                error!("Coin Catch {}: Connection timeout", connection_id);
+                error!("Coin Catch {connection_id}: Connection timeout");
                 retry_count += 1;
             }
         }
         
         // Handle reconnection with exponential backoff
-        let delay = f64::min(0.5 * 1.5f64.powi(retry_count as i32), MAX_RECONNECT_DELAY);
+        let delay = f64::min(0.5 * 1.5f64.powi(retry_count), MAX_RECONNECT_DELAY);
         
         info!("Coin Catch {}: Reconnecting in {:.2} seconds (attempt {}/{})", 
              connection_id, delay, retry_count + 1, max_retries);
