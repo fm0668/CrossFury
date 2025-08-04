@@ -194,13 +194,13 @@ impl ExchangeConnector for BinanceAdapter {
         rx
     }
     
-    fn get_orderbook_snapshot(&self, symbol: &str) -> Option<StandardizedOrderBook> {
+    async fn get_orderbook_snapshot(&self, symbol: &str) -> Option<StandardizedOrderBook> {
         info!("[Binance] 获取订单簿快照: {symbol}");
         // 暂时返回None，实际实现需要从本地缓存获取
         None
     }
     
-    fn get_recent_trades_snapshot(&self, symbol: &str, limit: usize) -> Vec<StandardizedTrade> {
+    async fn get_recent_trades_snapshot(&self, symbol: &str, limit: usize) -> Vec<StandardizedTrade> {
         info!("[Binance] 获取最近交易快照: {symbol}, 限制: {limit}");
         // 暂时返回空向量，实际实现需要从本地缓存获取
         Vec::new()
@@ -226,19 +226,17 @@ impl ExchangeConnector for BinanceAdapter {
         Err(ConnectorError::TradingNotImplemented)
     }
     
-    fn is_connected(&self) -> bool {
-        self.get_connection_status() == ConnectionStatus::Connected
+    async fn is_connected(&self) -> bool {
+        self.get_connection_status().await == ConnectionStatus::Connected
     }
     
-    fn is_websocket_connected(&self) -> bool {
-        self.is_connected()
+    async fn is_websocket_connected(&self) -> bool {
+        self.is_connected().await
     }
     
-    fn get_connection_status(&self) -> ConnectionStatus {
-        // 这是同步方法，使用try_read避免阻塞
-        self.connection_status.try_read()
-            .map(|status| *status)
-            .unwrap_or(ConnectionStatus::Disconnected)
+    async fn get_connection_status(&self) -> ConnectionStatus {
+        let status = self.connection_status.read().await;
+        *status
     }
 }
 
@@ -300,7 +298,7 @@ impl ConnectorManager for BinanceAdapter {
     
     async fn get_connection_status_all(&self) -> std::collections::HashMap<(ExchangeType, MarketType), ConnectionStatus> {
         let mut status_map = std::collections::HashMap::new();
-        status_map.insert((ExchangeType::Binance, MarketType::Spot), self.get_connection_status());
+        status_map.insert((ExchangeType::Binance, MarketType::Spot), self.get_connection_status().await);
         status_map
     }
 }
@@ -366,7 +364,7 @@ impl BinanceAdapter {
     
     /// 健康检查（向后兼容方法）
     pub async fn health_check(&self) -> Result<HealthStatus, ConnectorError> {
-        let status = self.get_connection_status();
+        let status = self.get_connection_status().await;
         
         let health_status = match status {
             ConnectionStatus::Connected => HealthStatus::Healthy,

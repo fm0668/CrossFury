@@ -555,23 +555,15 @@ impl ExchangeConnector for BinanceFuturesConnector {
     }
     
     // 本地缓存快照读取
-    fn get_orderbook_snapshot(&self, symbol: &str) -> Option<StandardizedOrderBook> {
-        // 使用try_read避免阻塞
-        if let Ok(cache) = self.orderbook_cache.try_read() {
-            cache.get(symbol).cloned()
-        } else {
-            None
-        }
+    async fn get_orderbook_snapshot(&self, symbol: &str) -> Option<StandardizedOrderBook> {
+        let cache = self.orderbook_cache.read().await;
+        cache.get(symbol).cloned()
     }
     
-    fn get_recent_trades_snapshot(&self, symbol: &str, limit: usize) -> Vec<StandardizedTrade> {
-        // 使用try_read避免阻塞
-        if let Ok(cache) = self.trades_cache.try_read() {
-            if let Some(trades) = cache.get(symbol) {
-                trades.iter().rev().take(limit).cloned().collect()
-            } else {
-                Vec::new()
-            }
+    async fn get_recent_trades_snapshot(&self, symbol: &str, limit: usize) -> Vec<StandardizedTrade> {
+        let cache = self.trades_cache.read().await;
+        if let Some(trades) = cache.get(symbol) {
+            trades.iter().rev().take(limit).cloned().collect()
         } else {
             Vec::new()
         }
@@ -725,37 +717,24 @@ impl ExchangeConnector for BinanceFuturesConnector {
     }
     
     // 连接状态
-    fn is_connected(&self) -> bool {
-        // 使用try_read避免阻塞
-        if let Ok(state) = self.connection_state.try_read() {
-            matches!(*state, ConnectionState::Connected)
-        } else {
-            false
-        }
+    async fn is_connected(&self) -> bool {
+        let state = self.connection_state.read().await;
+        matches!(*state, ConnectionState::Connected)
     }
     
-    fn is_websocket_connected(&self) -> bool {
-        // 由于ws_handler.is_connected()是异步方法，这里只检查连接器状态
-        // 完整的WebSocket状态检查需要异步方法
-        // 使用try_read避免阻塞
-        if let Ok(state) = self.connection_state.try_read() {
-            matches!(*state, ConnectionState::Connected)
-        } else {
-            false
-        }
+    async fn is_websocket_connected(&self) -> bool {
+        let state = self.connection_state.read().await;
+        matches!(*state, ConnectionState::Connected)
     }
     
-    fn get_connection_status(&self) -> ConnectionStatus {
-        if let Ok(state) = self.connection_state.try_read() {
-            match &*state {
-                ConnectionState::Connected => ConnectionStatus::Connected,
-                ConnectionState::Connecting => ConnectionStatus::Connecting,
-                ConnectionState::Reconnecting => ConnectionStatus::Reconnecting,
-                ConnectionState::Disconnected => ConnectionStatus::Disconnected,
-                ConnectionState::Error(_) => ConnectionStatus::Error,
-            }
-        } else {
-            ConnectionStatus::Disconnected
+    async fn get_connection_status(&self) -> ConnectionStatus {
+        let state = self.connection_state.read().await;
+        match &*state {
+            ConnectionState::Connected => ConnectionStatus::Connected,
+            ConnectionState::Connecting => ConnectionStatus::Connecting,
+            ConnectionState::Reconnecting => ConnectionStatus::Reconnecting,
+            ConnectionState::Disconnected => ConnectionStatus::Disconnected,
+            ConnectionState::Error(_) => ConnectionStatus::Error,
         }
     }
 }

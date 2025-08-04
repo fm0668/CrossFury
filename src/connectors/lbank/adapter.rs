@@ -148,7 +148,7 @@ impl ExchangeConnector for LBankConnector {
     }
     
     // 本地缓存快照读取
-    fn get_orderbook_snapshot(&self, symbol: &str) -> Option<StandardizedOrderBook> {
+    async fn get_orderbook_snapshot(&self, symbol: &str) -> Option<StandardizedOrderBook> {
         // 从app_state中获取最新的订单簿数据
         if let Some(price_data) = self.app_state.price_data.get(symbol) {
             let data = price_data.value();
@@ -167,7 +167,7 @@ impl ExchangeConnector for LBankConnector {
         }
     }
     
-    fn get_recent_trades_snapshot(&self, _symbol: &str, _limit: usize) -> Vec<StandardizedTrade> {
+    async fn get_recent_trades_snapshot(&self, _symbol: &str, _limit: usize) -> Vec<StandardizedTrade> {
         // LBank连接器暂不支持交易数据
         Vec::new()
     }
@@ -190,22 +190,18 @@ impl ExchangeConnector for LBankConnector {
     }
     
     // 连接状态
-    fn is_connected(&self) -> bool {
-        // 这里应该是同步方法，但我们需要读取异步锁
-        // 暂时返回WebSocket处理器的连接状态
+    async fn is_connected(&self) -> bool {
+        // 检查WebSocket处理器的连接状态
         self.websocket_handler.is_connected()
     }
     
-    fn is_websocket_connected(&self) -> bool {
+    async fn is_websocket_connected(&self) -> bool {
         self.websocket_handler.is_connected()
     }
     
-    fn get_connection_status(&self) -> ConnectionStatus {
-        // 由于这是同步方法，我们使用try_read来避免阻塞
-        match self.status.try_read() {
-            Ok(status) => *status,
-            Err(_) => ConnectionStatus::Disconnected, // 如果无法读取，默认为断开连接
-        }
+    async fn get_connection_status(&self) -> ConnectionStatus {
+        let status = self.status.read().await;
+        *status
     }
 }
 
@@ -237,7 +233,7 @@ impl LBankConnector {
     /// 健康检查
     pub async fn health_check(&self) -> Result<bool, ConnectorError> {
         // 检查连接状态
-        let is_healthy = self.is_connected();
+        let is_healthy = self.is_connected().await;
         Ok(is_healthy)
     }
     
@@ -276,7 +272,7 @@ impl LBankConnector {
     
     /// 获取最新订单簿
     pub async fn get_latest_orderbook(&self, symbol: &str) -> Result<StandardizedOrderBook, ConnectorError> {
-        if let Some(orderbook) = self.get_orderbook_snapshot(symbol) {
+        if let Some(orderbook) = self.get_orderbook_snapshot(symbol).await {
             Ok(orderbook)
         } else {
             Err(ConnectorError::InvalidResponse(format!("No orderbook data available for {symbol}")))

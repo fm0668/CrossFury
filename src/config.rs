@@ -2,8 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::Read;
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
 use std::path::Path;
 use std::sync::OnceLock;
 use crate::exchange_types::Exchange;
@@ -23,14 +23,14 @@ pub fn get_config() -> &'static Config {
 }
 
 /// Initializes configuration from the given file path.
-pub fn init_config<P: AsRef<Path>>(path: P) -> Result<(), String> {
+pub async fn init_config<P: AsRef<Path>>(path: P) -> Result<(), String> {
     let file_format = path.as_ref().extension().and_then(|os| os.to_str());
     
-    let mut file = File::open(path.as_ref())
+    let mut file = File::open(path.as_ref()).await
         .map_err(|e| format!("Failed to open config file: {e}"))?;
     
     let mut contents = String::new();
-    file.read_to_string(&mut contents)
+    file.read_to_string(&mut contents).await
         .map_err(|e| format!("Failed to read config file: {e}"))?;
     
     let config = match file_format {
@@ -167,12 +167,12 @@ impl Config {
     }
     
     /// Load configuration from a file.
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, String> {
+    pub async fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, String> {
         let file_format = path.as_ref().extension().and_then(|os| os.to_str());
-        let mut file = File::open(path.as_ref())
+        let mut file = File::open(path.as_ref()).await
             .map_err(|e| format!("Failed to open config file: {e}"))?;
         let mut contents = String::new();
-        file.read_to_string(&mut contents)
+        file.read_to_string(&mut contents).await
             .map_err(|e| format!("Failed to read config file: {e}"))?;
         match file_format {
             Some("toml") => toml::from_str(&contents)

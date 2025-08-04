@@ -55,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     
     // 检查连接状态
-    let status = connector.get_connection_status();
+    let status = connector.get_connection_status().await;
     info!("🔗 连接状态: {status:?}");
     
     // 创建订阅配置
@@ -102,7 +102,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
     
     for symbol in symbols_to_check {
-        if let Some(orderbook) = connector.get_orderbook_snapshot(symbol) {
+        if let Some(orderbook) = connector.get_orderbook_snapshot(symbol).await {
             info!("📈 {symbol} 订单簿数据:");
             info!("   最佳买价: {:.8}", orderbook.best_bid);
             info!("   最佳卖价: {:.8}", orderbook.best_ask);
@@ -187,7 +187,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     
     // 最终状态检查
-    let final_status = connector.get_connection_status();
+    let final_status = connector.get_connection_status().await;
     info!("🏁 最终连接状态: {final_status:?}");
     
     info!("🎉 LBank连接器演示程序完成");

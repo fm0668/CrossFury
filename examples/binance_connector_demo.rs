@@ -62,7 +62,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("📊 适配器信息:");
     println!("  - 交易所类型: {:?}", adapter.get_exchange_type());
     println!("  - 市场类型: {:?}", adapter.get_market_type());
-    println!("  - 连接状态: {:?}", adapter.get_connection_status());
+    let connection_status = adapter.get_connection_status().await;
+    println!("  - 连接状态: {:?}", connection_status);
     println!();
     
     // 先订阅市场数据（设置要订阅的流）
@@ -103,7 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tokio::time::sleep(Duration::from_secs(2)).await;
     
     // 检查连接状态
-    let status = adapter.get_connection_status();
+    let status = adapter.get_connection_status().await;
     println!("📡 当前连接状态: {status:?}");
     
     if !matches!(status, ConnectionStatus::Connected) {
@@ -215,7 +216,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     
     // 最终状态检查
-    let final_status = adapter.get_connection_status();
+    let final_status = adapter.get_connection_status().await;
     println!("📡 最终连接状态: {final_status:?}");
     
     println!();

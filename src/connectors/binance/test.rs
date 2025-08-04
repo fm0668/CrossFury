@@ -70,7 +70,7 @@ mod tests {
             Ok(Ok(_)) => {
                 info!("✅ Binance连接成功");
                 // 验证连接状态
-                let status = adapter.get_connection_status();
+                let status = adapter.get_connection_status().await;
                 assert_eq!(status, ConnectionStatus::Connected);
             },
             Ok(Err(e)) => info!("⚠️ Binance连接失败（可能是网络问题）: {:?}", e),
@@ -94,7 +94,7 @@ mod tests {
         assert!(result.is_ok(), "断开连接应该成功");
         
         // 验证连接状态
-        let status = adapter.get_connection_status();
+        let status = adapter.get_connection_status().await;
         assert_eq!(status, ConnectionStatus::Disconnected);
         
         info!("✅ Binance连接器断开连接测试通过");

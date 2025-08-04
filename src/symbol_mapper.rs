@@ -173,7 +173,7 @@ impl SymbolMapper {
 }
 
 /// Process cross-exchange arbitrage using the symbol mapper
-pub fn process_mapped_cross_exchange_arbitrage(
+pub async fn process_mapped_cross_exchange_arbitrage(
     app_state: &AppState,
     exchange_fees: &HashMap<Exchange, ExchangeFees>,
 ) -> Vec<CrossExchangeArb> {

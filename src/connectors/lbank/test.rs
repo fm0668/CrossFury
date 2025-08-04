@@ -52,7 +52,7 @@ mod tests {
         let mut connector = LBankConnector::new(config, Arc::new(app_state));
         
         // 验证连接器创建成功
-        let status = connector.get_connection_status();
+        let status = connector.get_connection_status().await;
         assert_eq!(status, ConnectionStatus::Disconnected);
         
         info!("✅ LBank连接器创建测试通过");
@@ -72,7 +72,7 @@ mod tests {
         assert!(result.is_ok(), "连接应该成功");
         
         // 验证连接状态
-        let status = connector.get_connection_status();
+        let status = connector.get_connection_status().await;
         assert_eq!(status, ConnectionStatus::Connected);
         
         info!("✅ LBank连接器连接测试通过");
@@ -95,7 +95,7 @@ mod tests {
         assert!(result.is_ok(), "断开连接应该成功");
         
         // 验证连接状态
-        let status = connector.get_connection_status();
+        let status = connector.get_connection_status().await;
         assert_eq!(status, ConnectionStatus::Disconnected);
         
         info!("✅ LBank连接器断开连接测试通过");

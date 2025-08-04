@@ -79,7 +79,7 @@ fn simple_distribute_symbols(symbols: Vec<String>, max_connections: usize) -> Ve
 #[tokio::main]
 async fn main() -> Result<(), AppError> {
     // Load configuration from file
-    match init_config("config.toml") {
+    match init_config("config.toml").await {
         Ok(_) => info!("Configuration loaded successfully"),
         Err(e) => {
             eprintln!("Error loading configuration: {e}");
@@ -677,7 +677,7 @@ async fn main() -> Result<(), AppError> {
                     &state_clone,
                     &fees_clone,
                     &cached_symbols
-                );
+                ).await;
                 
                 // Handle profitable opportunities
                 if !opportunities.is_empty() {
@@ -714,7 +714,7 @@ async fn main() -> Result<(), AppError> {
                         );
                         
                         // Buffer the opportunity for CSV logging
-                        buffer_cross_exchange_opportunity(opportunity.clone());
+                        let _ = buffer_cross_exchange_opportunity(opportunity.clone()).await;
                     }
                 }
                 
@@ -749,7 +749,7 @@ async fn main() -> Result<(), AppError> {
                                 );
                                 
                                 // Buffer the opportunity for CSV logging
-                                buffer_multi_hop_opportunity(opportunity.clone());
+                                let _ = buffer_multi_hop_opportunity(opportunity.clone()).await;
                             }
                         }
                     }

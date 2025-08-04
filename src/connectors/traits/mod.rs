@@ -25,8 +25,8 @@ pub trait ExchangeConnector: Send + Sync {
     fn get_user_data_stream(&self) -> mpsc::UnboundedReceiver<StandardizedMessage>;
     
     // 本地缓存快照读取
-    fn get_orderbook_snapshot(&self, symbol: &str) -> Option<StandardizedOrderBook>;
-    fn get_recent_trades_snapshot(&self, symbol: &str, limit: usize) -> Vec<StandardizedTrade>;
+    async fn get_orderbook_snapshot(&self, symbol: &str) -> Option<StandardizedOrderBook>;
+    async fn get_recent_trades_snapshot(&self, symbol: &str, limit: usize) -> Vec<StandardizedTrade>;
     
     // 交易相关操作 (REST API)
     async fn place_order(&self, order: &OrderRequest) -> Result<OrderResponse, ConnectorError>;
@@ -35,9 +35,9 @@ pub trait ExchangeConnector: Send + Sync {
     async fn get_account_balance(&self) -> Result<AccountBalance, ConnectorError>;
     
     // 连接状态
-    fn is_connected(&self) -> bool;
-    fn is_websocket_connected(&self) -> bool;
-    fn get_connection_status(&self) -> ConnectionStatus;
+    async fn is_connected(&self) -> bool;
+    async fn is_websocket_connected(&self) -> bool;
+    async fn get_connection_status(&self) -> ConnectionStatus;
 }
 
 /// DataFlowManager trait - 完全按照核心Trait定义实现
