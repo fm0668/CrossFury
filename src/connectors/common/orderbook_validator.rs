@@ -7,6 +7,7 @@ use log::{debug, warn, error};
 use serde::{Deserialize, Serialize};
 use rust_decimal::Decimal;
 use crate::exchange_types::StandardOrderBook as OrderBook;
+use chrono;
 
 /// 订单簿档位
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,6 +53,10 @@ pub struct OrderbookValidatorConfig {
     pub check_duplicate_prices: bool,
     /// 验证超时时间（毫秒）
     pub validation_timeout_ms: u64,
+    /// 最大时间戳偏差（毫秒）
+    pub max_timestamp_diff_ms: i64,
+    /// 是否启用时间戳验证
+    pub enable_timestamp_validation: bool,
 }
 
 /// 验证统计信息
@@ -139,6 +144,10 @@ pub enum ValidationErrorType {
     DataFormat,
     /// 时间戳错误
     InvalidTimestamp,
+    /// 时间戳过期
+    TimestampExpired,
+    /// 时间戳未来时间
+    TimestampFuture,
 }
 
 /// 验证警告类型
@@ -197,6 +206,8 @@ impl Default for OrderbookValidatorConfig {
             check_price_ordering: true,
             check_duplicate_prices: true,
             validation_timeout_ms: 100,
+            max_timestamp_diff_ms: 30000, // 30秒
+            enable_timestamp_validation: true,
         }
     }
 }
@@ -215,7 +226,7 @@ impl Default for ValidationStats {
 }
 
 impl OrderbookValidator {
-    /// 创建新的订单簿验证器
+    /// 创建新的验证器实例
     pub fn new(config: OrderbookValidatorConfig) -> Self {
         Self {
             config,
@@ -227,6 +238,44 @@ impl OrderbookValidator {
     /// 使用默认配置创建验证器
     pub fn with_default_config() -> Self {
         Self::new(OrderbookValidatorConfig::default())
+    }
+
+    /// 智能时间戳处理
+    /// 优先使用交易所提供的时间戳，如果无效则使用当前时间
+    /// 支持多交易所的时间戳格式和容错处理
+    pub fn process_timestamp(&self, orderbook_timestamp: i64) -> i64 {
+        if !self.config.enable_timestamp_validation {
+            // 如果禁用时间戳验证，直接使用订单簿时间戳
+            return if orderbook_timestamp > 0 {
+                orderbook_timestamp
+            } else {
+                chrono::Utc::now().timestamp_millis()
+            };
+        }
+
+        let current_time = chrono::Utc::now().timestamp_millis();
+        
+        // 检查时间戳是否有效（大于0且不为默认值）
+        if orderbook_timestamp <= 0 {
+            debug!("[OrderbookValidator] 无效时间戳 {}, 使用当前时间", orderbook_timestamp);
+            return current_time;
+        }
+
+        // 计算时间差
+        let time_diff = (current_time - orderbook_timestamp).abs();
+        
+        // 检查时间戳是否在合理范围内
+        if time_diff <= self.config.max_timestamp_diff_ms {
+            // 时间戳合理，使用交易所提供的时间戳
+            orderbook_timestamp
+        } else {
+            // 时间戳异常（太旧或太新），使用当前时间
+            warn!(
+                "[OrderbookValidator] 时间戳异常: 交易所时间={}, 当前时间={}, 差值={}ms, 最大允许={}ms, 使用当前时间",
+                orderbook_timestamp, current_time, time_diff, self.config.max_timestamp_diff_ms
+            );
+            current_time
+        }
     }
 
     /// 验证订单簿
@@ -346,21 +395,76 @@ impl OrderbookValidator {
             });
         }
         
-        // 检查时间戳
-        if orderbook.timestamp > 0 {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as u64;
-            
-            let delay = now.saturating_sub(orderbook.timestamp as u64);
-            if delay > 5000 { // 5秒延迟
-                warnings.push(ValidationWarning {
-                    warning_type: ValidationWarningType::DataDelay,
-                    message: format!("数据延迟: {}ms", delay),
-                    details: Some(format!("timestamp: {}, now: {}", orderbook.timestamp, now)),
+        // 智能时间戳验证
+        self.validate_timestamp(orderbook, errors, warnings);
+    }
+
+    /// 验证时间戳
+    fn validate_timestamp(
+        &self,
+        orderbook: &OrderBook,
+        errors: &mut Vec<ValidationError>,
+        warnings: &mut Vec<ValidationWarning>,
+    ) {
+        if !self.config.enable_timestamp_validation {
+            return;
+        }
+
+        let current_time = chrono::Utc::now().timestamp_millis();
+        let orderbook_timestamp = orderbook.timestamp;
+
+        // 检查时间戳是否有效
+        if orderbook_timestamp <= 0 {
+            errors.push(ValidationError {
+                error_type: ValidationErrorType::InvalidTimestamp,
+                message: "无效的时间戳".to_string(),
+                price: None,
+                quantity: None,
+                level_index: None,
+            });
+            return;
+        }
+
+        // 计算时间差
+        let time_diff = current_time - orderbook_timestamp;
+        let abs_time_diff = time_diff.abs();
+
+        // 检查时间戳是否在合理范围内
+        if abs_time_diff > self.config.max_timestamp_diff_ms {
+            if time_diff > 0 {
+                // 时间戳过期（太旧）
+                errors.push(ValidationError {
+                    error_type: ValidationErrorType::TimestampExpired,
+                    message: format!(
+                        "时间戳过期: 数据时间={}, 当前时间={}, 延迟={}ms, 最大允许={}ms",
+                        orderbook_timestamp, current_time, time_diff, self.config.max_timestamp_diff_ms
+                    ),
+                    price: None,
+                    quantity: None,
+                    level_index: None,
+                });
+            } else {
+                // 时间戳来自未来
+                errors.push(ValidationError {
+                    error_type: ValidationErrorType::TimestampFuture,
+                    message: format!(
+                        "时间戳来自未来: 数据时间={}, 当前时间={}, 提前={}ms, 最大允许={}ms",
+                        orderbook_timestamp, current_time, -time_diff, self.config.max_timestamp_diff_ms
+                    ),
+                    price: None,
+                    quantity: None,
+                    level_index: None,
                 });
             }
+        } else if abs_time_diff > 5000 { // 5秒延迟警告
+            warnings.push(ValidationWarning {
+                warning_type: ValidationWarningType::DataDelay,
+                message: format!("数据延迟: {}ms", abs_time_diff),
+                details: Some(format!(
+                    "orderbook_timestamp: {}, current_time: {}", 
+                    orderbook_timestamp, current_time
+                )),
+            });
         }
     }
 
@@ -773,6 +877,9 @@ mod tests {
     use super::*;
 
     fn create_test_orderbook() -> OrderBook {
+        let validator = OrderbookValidator::with_default_config();
+        let current_timestamp = chrono::Utc::now().timestamp_millis();
+        
         OrderBook {
             symbol: "BTCUSDT".to_string(),
             exchange: crate::exchange_types::Exchange::Binance,
@@ -788,10 +895,28 @@ mod tests {
                 (50002.0, 2.0),
                 (50003.0, 3.0),
             ],
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as i64,
+            // 使用智能时间戳处理
+            timestamp: validator.process_timestamp(current_timestamp),
+        }
+    }
+
+    fn create_test_orderbook_with_timestamp(timestamp: i64) -> OrderBook {
+        OrderBook {
+            symbol: "BTCUSDT".to_string(),
+            exchange: crate::exchange_types::Exchange::Binance,
+            best_bid: 50000.0,
+            best_ask: 50001.0,
+            depth_bids: vec![
+                (50000.0, 1.0),
+                (49999.0, 2.0),
+                (49998.0, 3.0),
+            ],
+            depth_asks: vec![
+                (50001.0, 1.0),
+                (50002.0, 2.0),
+                (50003.0, 3.0),
+            ],
+            timestamp,
         }
     }
 
@@ -930,5 +1055,70 @@ mod tests {
         let report = validator.generate_report();
         assert_eq!(report.success_rate, 100.0);
         assert_eq!(report.stats.total_validations, 1);
+    }
+
+    #[test]
+    fn test_timestamp_validation() {
+        let mut validator = OrderbookValidator::with_default_config();
+        
+        // 测试有效时间戳
+        let current_time = chrono::Utc::now().timestamp_millis();
+        let valid_orderbook = create_test_orderbook_with_timestamp(current_time);
+        let result = validator.validate_orderbook(&valid_orderbook);
+        assert!(result.is_valid);
+        
+        // 测试过期时间戳
+        let expired_timestamp = current_time - 60000; // 60秒前
+        let expired_orderbook = create_test_orderbook_with_timestamp(expired_timestamp);
+        let result = validator.validate_orderbook(&expired_orderbook);
+        assert!(!result.is_valid);
+        assert!(result.errors.iter().any(|e| matches!(e.error_type, ValidationErrorType::TimestampExpired)));
+        
+        // 测试未来时间戳
+        let future_timestamp = current_time + 60000; // 60秒后
+        let future_orderbook = create_test_orderbook_with_timestamp(future_timestamp);
+        let result = validator.validate_orderbook(&future_orderbook);
+        assert!(!result.is_valid);
+        assert!(result.errors.iter().any(|e| matches!(e.error_type, ValidationErrorType::TimestampFuture)));
+        
+        // 测试无效时间戳
+        let invalid_orderbook = create_test_orderbook_with_timestamp(0);
+        let result = validator.validate_orderbook(&invalid_orderbook);
+        assert!(!result.is_valid);
+        assert!(result.errors.iter().any(|e| matches!(e.error_type, ValidationErrorType::InvalidTimestamp)));
+    }
+
+    #[test]
+    fn test_process_timestamp() {
+        let validator = OrderbookValidator::with_default_config();
+        
+        // 测试有效时间戳
+        let current_time = chrono::Utc::now().timestamp_millis();
+        let processed = validator.process_timestamp(current_time);
+        assert_eq!(processed, current_time);
+        
+        // 测试无效时间戳（应该返回当前时间）
+        let processed_invalid = validator.process_timestamp(0);
+        let now = chrono::Utc::now().timestamp_millis();
+        assert!((processed_invalid - now).abs() < 1000); // 允许1秒误差
+        
+        // 测试过期时间戳（应该返回当前时间）
+        let expired_time = current_time - 60000;
+        let processed_expired = validator.process_timestamp(expired_time);
+        let now2 = chrono::Utc::now().timestamp_millis();
+        assert!((processed_expired - now2).abs() < 1000); // 允许1秒误差
+    }
+
+    #[test]
+    fn test_timestamp_validation_disabled() {
+        let mut config = OrderbookValidatorConfig::default();
+        config.enable_timestamp_validation = false;
+        let mut validator = OrderbookValidator::new(config);
+        
+        // 即使时间戳无效，验证也应该通过
+        let invalid_orderbook = create_test_orderbook_with_timestamp(0);
+        let result = validator.validate_orderbook(&invalid_orderbook);
+        assert!(result.is_valid);
+        assert!(result.errors.is_empty());
     }
 }
