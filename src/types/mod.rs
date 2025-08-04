@@ -18,7 +18,7 @@ pub use exchange::{ExchangeType, MarketType};
 pub use market_data::{StandardizedMessage, StandardizedOrderBook, StandardizedTrade, DepthUpdate};
 pub use orders::{OrderRequest, OrderResponse, OrderStatus};
 pub use errors::ConnectorError;
-pub use config::{ConnectionStatus, HealthStatus, ConnectionStats};
+pub use config::{ConnectionStatus, HealthStatus, ConnectionStats, ConnectionQuality, SubscriptionStatus, SubscriptionResult, AdvancedConnectorConfig};
 
 // 账户相关类型
 pub use account::{AccountBalance, Position, PositionSide, CurrencyBalance};

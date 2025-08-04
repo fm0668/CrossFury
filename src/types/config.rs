@@ -167,3 +167,105 @@ pub struct ConnectionStats {
     pub latency_ms: Option<f64>,
 }
 
+/// 连接质量信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConnectionQuality {
+    pub latency_ms: f64,
+    pub packet_loss_rate: f64,
+    pub stability_score: f64, // 0.0 - 1.0
+    pub last_updated: chrono::DateTime<chrono::Utc>,
+}
+
+impl Default for ConnectionQuality {
+    fn default() -> Self {
+        Self {
+            latency_ms: 0.0,
+            packet_loss_rate: 0.0,
+            stability_score: 1.0,
+            last_updated: chrono::Utc::now(),
+        }
+    }
+}
+
+/// 订阅状态
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SubscriptionStatus {
+    Pending,
+    Subscribing,
+    Active,
+    Failed(String),
+    Retrying(u32),
+}
+
+impl std::fmt::Display for SubscriptionStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            SubscriptionStatus::Pending => write!(f, "PENDING"),
+            SubscriptionStatus::Subscribing => write!(f, "SUBSCRIBING"),
+            SubscriptionStatus::Active => write!(f, "ACTIVE"),
+            SubscriptionStatus::Failed(reason) => write!(f, "FAILED: {}", reason),
+            SubscriptionStatus::Retrying(count) => write!(f, "RETRYING({})", count),
+        }
+    }
+}
+
+/// 批量订阅结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubscriptionResult {
+    pub total_requested: usize,
+    pub successful: usize,
+    pub failed: usize,
+    pub pending: usize,
+    pub failed_symbols: Vec<(String, String)>, // (symbol, reason)
+}
+
+impl Default for SubscriptionResult {
+    fn default() -> Self {
+        Self {
+            total_requested: 0,
+            successful: 0,
+            failed: 0,
+            pending: 0,
+            failed_symbols: Vec::new(),
+        }
+    }
+}
+
+/// 高级连接器配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdvancedConnectorConfig {
+    pub base: ConnectorConfig,
+    
+    // 高级连接配置
+    pub emergency_ping_threshold: u32,  // 触发紧急ping的超时次数
+    pub connection_quality_check_interval: u64,  // 连接质量检查间隔
+    pub adaptive_timeout_enabled: bool,  // 是否启用自适应超时
+    
+    // 订阅配置
+    pub subscription_batch_size: usize,  // 批量订阅大小
+    pub subscription_retry_count: u32,   // 订阅重试次数
+    pub symbol_validation_enabled: bool, // 是否启用符号验证
+    
+    // 数据处理配置
+    pub depth_data_validation: bool,     // 深度数据验证
+    pub price_precision_auto_detect: bool, // 自动检测价格精度
+    pub orderbook_sort_validation: bool, // 订单簿排序验证
+}
+
+impl Default for AdvancedConnectorConfig {
+    fn default() -> Self {
+        Self {
+            base: ConnectorConfig::default(),
+            emergency_ping_threshold: 2,
+            connection_quality_check_interval: 30000,
+            adaptive_timeout_enabled: true,
+            subscription_batch_size: 10,
+            subscription_retry_count: 3,
+            symbol_validation_enabled: true,
+            depth_data_validation: true,
+            price_precision_auto_detect: true,
+            orderbook_sort_validation: true,
+        }
+    }
+}
+

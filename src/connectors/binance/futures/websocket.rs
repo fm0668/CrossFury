@@ -12,23 +12,22 @@ use crate::core::AppError;
 pub type Result<T> = std::result::Result<T, AppError>;
 
 use tokio_tungstenite::{connect_async, tungstenite::Message, WebSocketStream, MaybeTlsStream};
+use futures_util::{SinkExt, StreamExt, stream::{SplitSink, SplitStream}};
 use tokio::net::TcpStream;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc, Mutex, RwLock};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use log::{info, error, debug, warn};
 use chrono::{DateTime, Utc};
-use futures_util::{SinkExt, StreamExt, stream::{SplitSink}};
 use std::time::Duration;
 
 /// Binance期货WebSocket处理器
 pub struct BinanceFuturesWebSocketHandler {
     /// 配置信息
     config: BinanceFuturesConfig,
-    /// WebSocket连接
-    ws_stream: Option<WebSocketStream<MaybeTlsStream<TcpStream>>>,
+    /// WebSocket读取流
+    ws_stream: Option<SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>>,
     /// WebSocket写入端
     ws_sink: Option<Arc<Mutex<SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>>>>,
     /// 数据发送通道
@@ -207,7 +206,15 @@ impl BinanceFuturesWebSocketHandler {
             .map_err(|_| AppError::WebSocketError("连接超时".to_string()))?
             .map_err(|e| AppError::WebSocketError(format!("连接失败: {e}")))?;
         
-        self.ws_stream = Some(ws_stream);
+        // 分割WebSocket流为读写两部分
+        let (ws_sink, ws_read) = ws_stream.split();
+        
+        // 保存sink用于发送消息
+        self.ws_sink = Some(Arc::new(Mutex::new(ws_sink)));
+        
+        // 保存读取流用于消息处理
+        self.ws_stream = Some(ws_read);
+        
         *self.is_connected.write().await = true;
         *self.last_heartbeat.write().await = Utc::now();
         
@@ -339,6 +346,11 @@ impl BinanceFuturesWebSocketHandler {
         *self.is_connected.read().await
     }
     
+    /// 获取WebSocket sink的引用（用于高级连接管理）
+    pub async fn get_ws_sink(&self) -> Option<Arc<Mutex<SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>>>> {
+        self.ws_sink.clone()
+    }
+    
     /// 断开连接
     pub async fn disconnect(&mut self) -> Result<()> {
         info!("正在断开Binance期货WebSocket连接...");
@@ -376,7 +388,7 @@ impl BinanceFuturesWebSocketHandler {
             return Err(AppError::WebSocketError("WebSocket未连接".to_string()));
         }
         
-        let ws_stream = self.ws_stream.take().unwrap();
+        let mut ws_stream = self.ws_stream.take().unwrap();
         let data_sender = self.data_sender.clone();
         let trade_sender = self.trade_sender.clone();
         let account_sender = self.account_sender.clone();
@@ -384,11 +396,10 @@ impl BinanceFuturesWebSocketHandler {
         let is_connected = self.is_connected.clone();
         let last_heartbeat = self.last_heartbeat.clone();
         
-        let (ws_sink, mut ws_stream) = ws_stream.split();
-        let ws_sink = Arc::new(Mutex::new(ws_sink));
-        
-        // 将写入端保存到结构体中，以便订阅操作使用
-        self.ws_sink = Some(ws_sink.clone());
+        // 获取已经存在的ws_sink引用
+        let ws_sink = self.ws_sink.clone().ok_or_else(|| {
+            AppError::WebSocketError("WebSocket sink未初始化".to_string())
+        })?;
         
         // 启动增强心跳任务
         let ping_sink = ws_sink.clone();

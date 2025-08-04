@@ -6,6 +6,7 @@ use crate::connectors::binance::futures::config::{BinanceFuturesConfig, MarginTy
 use crate::connectors::binance::futures::websocket::*;
 use crate::connectors::binance::futures::rest_api::{BinanceFuturesRestClient, MarginType as RestMarginType};
 use crate::connectors::binance::futures::message_parser::*;
+use crate::connectors::common::advanced_connection::{EmergencyPingManager, AdaptiveTimeoutManager};
 use crate::types::market_data::*;
 use crate::types::trading::{*, TimeInForce as TradingTimeInForce, PositionSide as TradingPositionSide};
 use crate::core::AppError;
@@ -26,6 +27,7 @@ use tokio::sync::{mpsc, RwLock};
 use futures_util::StreamExt;
 use std::sync::Arc;
 use std::collections::HashMap;
+use std::time::Duration;
 use log::{info, warn};
 use chrono::{DateTime, Utc};
 use serde_json::Value;
@@ -56,6 +58,10 @@ pub struct BinanceFuturesConnector {
     last_heartbeat: Arc<RwLock<DateTime<Utc>>>,
     /// 重连计数
     reconnect_count: Arc<RwLock<u32>>,
+    /// 紧急Ping管理器
+    emergency_ping_manager: EmergencyPingManager,
+    /// 自适应超时管理器
+    adaptive_timeout_manager: AdaptiveTimeoutManager,
     
     // ExchangeConnector trait 所需的数据流
     /// 标准化市场数据流发送端
@@ -120,6 +126,15 @@ impl BinanceFuturesConnector {
         let (market_tx, market_rx) = mpsc::unbounded_channel::<StandardizedMessage>();
         let (user_tx, user_rx) = mpsc::unbounded_channel::<StandardizedMessage>();
         
+        // 初始化高级连接管理组件
+        let emergency_ping_manager = EmergencyPingManager::new(5);
+        let adaptive_timeout_manager = AdaptiveTimeoutManager::new(
+                    Duration::from_secs(30),
+                    Duration::from_secs(5),
+                    Duration::from_secs(120),
+                    1.5
+                );
+        
         Self {
             config,
             ws_handler,
@@ -133,6 +148,8 @@ impl BinanceFuturesConnector {
             listen_key: Arc::new(RwLock::new(None)),
             last_heartbeat: Arc::new(RwLock::new(Utc::now())),
             reconnect_count: Arc::new(RwLock::new(0)),
+            emergency_ping_manager,
+            adaptive_timeout_manager,
             standardized_market_sender: Some(market_tx),
             standardized_market_receiver: Some(market_rx),
             standardized_user_sender: Some(user_tx),
@@ -471,6 +488,47 @@ impl BinanceFuturesConnector {
     /// 调整持仓模式
     pub async fn change_position_mode(&self, dual_side_position: bool) -> Result<Value> {
         self.rest_client.change_position_mode(dual_side_position).await
+    }
+    
+    /// 获取紧急Ping管理器的引用
+    pub fn get_emergency_ping_manager(&self) -> &EmergencyPingManager {
+        &self.emergency_ping_manager
+    }
+    
+    /// 获取自适应超时管理器的引用
+    pub fn get_adaptive_timeout_manager(&self) -> &AdaptiveTimeoutManager {
+        &self.adaptive_timeout_manager
+    }
+    
+    /// 执行紧急ping操作
+    pub async fn execute_emergency_ping(&self) -> Result<()> {
+        if let Some(ws_sink) = self.ws_handler.get_ws_sink().await {
+            self.emergency_ping_manager.execute_emergency_ping(&ws_sink).await
+                .map_err(|e| AppError::ConnectionError(format!("紧急ping失败: {}", e)))?;
+        }
+        Ok(())
+    }
+    
+    /// 处理连接超时
+    pub async fn handle_connection_timeout(&self, response_time: std::time::Duration) {
+        self.adaptive_timeout_manager.handle_timeout().await;
+        
+        // 如果响应时间过长，触发紧急ping
+        if response_time > std::time::Duration::from_secs(10) {
+            if let Err(e) = self.execute_emergency_ping().await {
+                log::warn!("紧急ping执行失败: {}", e);
+            }
+        }
+    }
+    
+    /// 获取当前超时配置
+    pub async fn get_current_timeout(&self) -> std::time::Duration {
+        self.adaptive_timeout_manager.get_current_timeout().await
+    }
+    
+    /// 重置超时管理器
+    pub async fn reset_timeout_manager(&self) {
+        self.adaptive_timeout_manager.reset().await;
     }
 }
 
