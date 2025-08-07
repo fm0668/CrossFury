@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::OnceLock;
 use crate::exchange_types::Exchange;
 use once_cell::sync::Lazy;
+use crate::types::config::AdvancedConnectorConfig;
 
 /// Global configuration singleton
 pub static CONFIG: OnceLock<Config> = OnceLock::new();
@@ -55,6 +56,8 @@ pub struct Config {
     pub exchanges: HashMap<String, ExchangeConfig>,
     pub token_configs: HashMap<String, TokenConfig>,
     pub features: FeatureFlags,
+    pub websocket_optimization: WebSocketOptimizationConfig,
+    pub advanced_connectors: HashMap<String, AdvancedConnectorConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -118,6 +121,23 @@ pub struct FeatureFlags {
     pub enable_simd_json: bool,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct WebSocketOptimizationConfig {
+    pub enable_emergency_ping: bool,
+    pub emergency_ping_threshold: u32,
+    pub emergency_ping_interval_ms: u64,
+    pub enable_adaptive_timeout: bool,
+    pub initial_timeout_ms: u64,
+    pub max_timeout_ms: u64,
+    pub timeout_adjustment_factor: f64,
+    pub enable_batch_subscription: bool,
+    pub batch_size: usize,
+    pub batch_delay_ms: u64,
+    pub connection_quality_check_interval_ms: u64,
+    pub latency_threshold_ms: f64,
+    pub packet_loss_threshold: f64,
+}
+
 /// Default configuration used when no config file is provided.
 /// Note: We use the name DEFAULT_CONFIG here.
 pub static DEFAULT_CONFIG: Lazy<Config> = Lazy::new(|| Config {
@@ -153,6 +173,22 @@ pub static DEFAULT_CONFIG: Lazy<Config> = Lazy::new(|| Config {
         enable_circuit_breakers: true,
         enable_simd_json: true,
     },
+    websocket_optimization: WebSocketOptimizationConfig {
+        enable_emergency_ping: true,
+        emergency_ping_threshold: 2,
+        emergency_ping_interval_ms: 5000,
+        enable_adaptive_timeout: true,
+        initial_timeout_ms: 10000,
+        max_timeout_ms: 60000,
+        timeout_adjustment_factor: 1.5,
+        enable_batch_subscription: true,
+        batch_size: 10,
+        batch_delay_ms: 100,
+        connection_quality_check_interval_ms: 30000,
+        latency_threshold_ms: 500.0,
+        packet_loss_threshold: 0.05,
+    },
+    advanced_connectors: HashMap::new(),
 });
 
 impl Config {
@@ -210,5 +246,27 @@ impl Config {
             }
         }
         symbol.to_string()
+    }
+    
+    /// Get WebSocket optimization configuration.
+    pub fn get_websocket_optimization(&self) -> &WebSocketOptimizationConfig {
+        &self.websocket_optimization
+    }
+    
+    /// Get advanced connector configuration by exchange name.
+    pub fn get_advanced_connector_config(&self, exchange: &str) -> Option<&AdvancedConnectorConfig> {
+        self.advanced_connectors.get(exchange)
+    }
+    
+    /// Set advanced connector configuration for an exchange.
+    pub fn set_advanced_connector_config(&mut self, exchange: String, config: AdvancedConnectorConfig) {
+        self.advanced_connectors.insert(exchange, config);
+    }
+    
+    /// Check if WebSocket optimization is enabled.
+    pub fn is_websocket_optimization_enabled(&self) -> bool {
+        self.websocket_optimization.enable_emergency_ping ||
+        self.websocket_optimization.enable_adaptive_timeout ||
+        self.websocket_optimization.enable_batch_subscription
     }
 }

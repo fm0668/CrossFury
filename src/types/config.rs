@@ -187,6 +187,35 @@ impl Default for ConnectionQuality {
     }
 }
 
+/// 连接质量等级
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ConnectionQualityLevel {
+    Excellent,
+    Good,
+    Fair,
+    Poor,
+}
+
+impl ConnectionQuality {
+    /// 评估连接质量等级
+    pub fn assess_quality(&self) -> ConnectionQualityLevel {
+        if self.latency_ms > 1000.0 || self.packet_loss_rate > 0.1 || self.stability_score < 0.3 {
+            ConnectionQualityLevel::Poor
+        } else if self.latency_ms > 500.0 || self.packet_loss_rate > 0.05 || self.stability_score < 0.7 {
+            ConnectionQualityLevel::Fair
+        } else if self.latency_ms > 200.0 || self.packet_loss_rate > 0.01 || self.stability_score < 0.9 {
+            ConnectionQualityLevel::Good
+        } else {
+            ConnectionQualityLevel::Excellent
+        }
+    }
+    
+    /// 检查连接质量是否较差
+    pub fn is_poor(&self) -> bool {
+        matches!(self.assess_quality(), ConnectionQualityLevel::Poor)
+    }
+}
+
 /// 订阅状态
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SubscriptionStatus {
@@ -209,17 +238,27 @@ impl std::fmt::Display for SubscriptionStatus {
     }
 }
 
-/// 批量订阅结果
+/// 单个订阅结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubscriptionResult {
+    pub symbol: String,
+    pub data_type: crate::types::common::DataType,
+    pub status: SubscriptionStatus,
+    pub error: Option<String>,
+}
+
+/// 批量订阅结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchSubscriptionResult {
     pub total_requested: usize,
     pub successful: usize,
     pub failed: usize,
     pub pending: usize,
     pub failed_symbols: Vec<(String, String)>, // (symbol, reason)
+    pub results: Vec<SubscriptionResult>,
 }
 
-impl Default for SubscriptionResult {
+impl Default for BatchSubscriptionResult {
     fn default() -> Self {
         Self {
             total_requested: 0,
@@ -227,6 +266,7 @@ impl Default for SubscriptionResult {
             failed: 0,
             pending: 0,
             failed_symbols: Vec::new(),
+            results: Vec::new(),
         }
     }
 }

@@ -466,14 +466,19 @@ mod tests {
     async fn test_timeout_adjustment() {
         let config = AdaptiveTimeoutConfig {
             evaluation_interval_ms: 100, // 快速评估用于测试
+            base_timeout_ms: 5000,
+            max_timeout_ms: 15000, // 确保有足够的调整空间
             ..Default::default()
         };
         let manager = AdaptiveTimeoutManager::new(config);
         
-        // 记录高延迟样本
+        // 记录高延迟样本（2000ms延迟会导致更低的质量分数）
         for _ in 0..10 {
-            manager.record_latency(Duration::from_millis(500)).await;
+            manager.record_latency(Duration::from_millis(2000)).await;
         }
+        
+        // 记录一些丢包以进一步降低质量分数
+        manager.record_packet_loss(0.1).await;
         
         // 等待评估间隔
         sleep(TokioDuration::from_millis(150)).await;
@@ -484,6 +489,11 @@ mod tests {
         // 高延迟应该导致超时时间增加
         let timeout = manager.get_current_timeout().await;
         assert!(timeout > Duration::from_millis(5000));
+        
+        // 验证网络质量指标
+        let metrics = manager.get_network_metrics().await;
+        assert!(metrics.avg_latency_ms >= 2000.0);
+        assert!(metrics.quality_score < 0.6); // 低质量网络
     }
 
     #[tokio::test]

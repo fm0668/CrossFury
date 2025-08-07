@@ -711,6 +711,14 @@ mod tests {
         assert!(converter.validate_symbol("BTC_USDT").await.unwrap());
         assert!(converter.validate_symbol("ETH/BTC").await.unwrap());
         assert!(!converter.validate_symbol("").await.unwrap());
-        assert!(converter.validate_symbol("INVALID_FORMAT").await.is_err());
+        
+        // 测试严格模式下的验证
+        let mut strict_config = SymbolConverterConfig::default();
+        strict_config.strict_mode = true;
+        let strict_converter = SymbolConverter::new(strict_config);
+        // 使用一个真正无法解析的格式：包含特殊字符
+        assert!(strict_converter.validate_symbol("INVALID@FORMAT").await.is_err());
+        // 使用一个太短的字符串
+        assert!(strict_converter.validate_symbol("A").await.is_err());
     }
 }

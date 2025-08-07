@@ -60,14 +60,14 @@ pub const PERP_PRODUCTS_CACHE_FILE: &str = "phemex_perp_products_cache.json";
 
 // Timeouts
 pub const INITIAL_TIMEOUT: Duration = Duration::from_secs(10); // Longer timeout for initial product fetch
-pub const WEBSOCKET_TIMEOUT: Duration = Duration::from_secs(5); // Shorter timeout for WebSocket messages
+pub const WEBSOCKET_TIMEOUT: Duration = Duration::from_secs(3); // Reduced timeout for faster response
 
 // In core.rs, add this constant back:
 pub const SYMBOL_TYPE_PERPETUAL: &str = "perpetual";
 
 // Connection stale detection settings
-pub const STALE_CONNECTION_TIMEOUT: i64 = 30000; // 30 seconds (increased from 20)
-pub const FORCE_RECONNECT_TIMEOUT: i64 = 45000; // 45 seconds of complete silence
+pub const STALE_CONNECTION_TIMEOUT: i64 = 10000; // 10 seconds - reduced for faster detection
+pub const FORCE_RECONNECT_TIMEOUT: i64 = 15000; // 15 seconds - reduced for faster recovery
 
 // OrderbookUpdate
 #[derive(Debug, Clone)]

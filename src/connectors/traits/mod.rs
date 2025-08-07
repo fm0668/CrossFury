@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 use chrono;
 use crate::types::*;
+use crate::types::config::BatchSubscriptionResult;
 
 /// ExchangeConnector trait - 完全按照CrossFury_核心Trait定义.md实现
 #[async_trait]
@@ -61,7 +62,7 @@ pub trait ExchangeConnector: Send + Sync {
         &self, 
         symbols: Vec<String>, 
         batch_size: usize
-    ) -> Result<SubscriptionResult, ConnectorError> {
+    ) -> Result<BatchSubscriptionResult, ConnectorError> {
         // 默认实现：逐个订阅（回退到基础实现）
         let mut successful_count = 0;
         let mut failed_symbols = Vec::new();
@@ -74,12 +75,13 @@ pub trait ExchangeConnector: Send + Sync {
             }
         }
         
-        Ok(SubscriptionResult {
+        Ok(BatchSubscriptionResult {
             total_requested,
             successful: successful_count,
             failed: failed_symbols.len(),
             pending: 0,
             failed_symbols,
+            results: Vec::new(),
         })
     }
     
