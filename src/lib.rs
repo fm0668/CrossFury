@@ -1,7 +1,6 @@
 // Define modules
 pub mod core;
 pub mod utils;
-pub mod network;  // This points to network/mod.rs
 pub mod terminal_log;  // Terminal logging module
 pub mod exchange_types;  // Exchange-specific data types
 pub mod cross_exchange;  // Cross-exchange arbitrage logic
@@ -26,10 +25,8 @@ pub use utils::{
     analyze_exchange_token_distribution,
 };
 
-// Re-export futures WebSocket handlers
-pub use network::binance_futures_websocket::binance_futures_websocket_handler;
-pub use network::bybit_futures_websocket::bybit_futures_websocket_handler;
-pub use network::okx_futures_websocket::okx_futures_websocket_handler;
+// 注意：原 network 模块的 WebSocket 处理器已移除
+// 请使用重构后的 connectors 模块中的相应功能
 
 // Re-export futures-related types
 pub use exchange_types::FuturesContract;
@@ -58,47 +55,11 @@ pub use cross_exchange::{
     get_target_cross_exchange_symbols,
 };
 
-// Re-export from network module
-pub use network::api_client::{
-    get_perpetual_products,
-    distribute_symbols
-};
-
 // In lib.rs, add this to your re-exports
 pub use cross_exchange::process_mapped_cross_exchange_arbitrage_subset;
 
-pub use network::websocket::{
-    websocket_handler
-};
-
-pub use network::message_processor::{
-    process_message,
-};
-
-pub use network::connection_manager::{
-    run_connection_health_manager
-};
-
-// Re-export new exchange WebSocket handlers
-pub use network::lbank_websocket::{
-    lbank_websocket_handler
-};
-
-pub use network::xtcom_websocket::{
-    xtcom_websocket_handler
-};
-
-pub use network::tapbit_websocket::{ 
-    tapbit_websocket_handler
-};
-
-pub use network::hbit_websocket::{
-    hbit_websocket_handler
-};
-
-pub use network::batonex_websocket::{
-    batonex_websocket_handler
-};
+// 注意：原 network 模块的功能已移除
+// 请使用重构后的 connectors 模块中的相应功能
 
 // Re-export from terminal_log module
 pub use terminal_log::run_clean_metrics_display;
@@ -106,6 +67,5 @@ pub use terminal_log::run_clean_metrics_display;
 // Re-export exchange types
 pub use exchange_types::*;
 
-pub use network::coincatch_websocket::{
-    coincatch_websocket_handler
-};
+// 注意：原 network 模块的功能已移除
+// 请使用重构后的 connectors 模块中的相应功能

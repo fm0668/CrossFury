@@ -2,7 +2,7 @@
 //! 包装现有的LBank WebSocket处理函数
 
 use crate::core::{AppState, AppError};
-use crate::network::lbank_websocket::lbank_websocket_handler;
+// use crate::network::lbank_websocket::lbank_websocket_handler; // 已移除network模块
 use crate::types::market_data::StandardizedMessage;
 use log::{info, error};
 use std::sync::Arc;
@@ -35,19 +35,10 @@ impl LBankWebSocketHandler {
     pub async fn start(&self) -> Result<(), AppError> {
         info!("Starting LBank WebSocket handler");
         
-        // 调用现有的lbank_websocket_handler函数
-        let symbols = vec!["BTCUSDT".to_string()]; // 默认订阅符号
-        let connection_index = 0;
-        match lbank_websocket_handler(symbols, connection_index, (*self.app_state).clone()).await {
-            Ok(_) => {
-                info!("LBank WebSocket handler completed successfully");
-                Ok(())
-            },
-            Err(e) => {
-                error!("LBank WebSocket handler failed: {}", e);
-                Err(e)
-            }
-        }
+        // TODO: 实现新的LBank WebSocket连接逻辑
+        // 原有的lbank_websocket_handler已随network模块一起移除
+        info!("LBank WebSocket handler - 待重构实现");
+        Ok(())
     }
 
     /// 订阅市场数据
@@ -56,7 +47,7 @@ impl LBankWebSocketHandler {
         
         // 在测试环境中，我们不启动真实的WebSocket连接
         // 只是模拟订阅成功
-        info!("LBank subscription simulated for symbols: {:?}", symbols);
+        info!("LBank subscription simulated for symbols: {symbols:?}");
         Ok(())
     }
 

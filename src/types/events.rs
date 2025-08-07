@@ -46,6 +46,20 @@ pub enum SystemEvent {
         profit_percentage: f64,
         timestamp: SystemTime,
     },
+    /// 服务暂停事件
+    ServicePaused {
+        exchange: ExchangeType,
+        market_type: MarketType,
+        reason: String,
+        timestamp: SystemTime,
+    },
+    /// 服务降级事件
+    ServiceDegraded {
+        exchange: ExchangeType,
+        market_type: MarketType,
+        reason: String,
+        timestamp: SystemTime,
+    },
 }
 
 /// 高频数据

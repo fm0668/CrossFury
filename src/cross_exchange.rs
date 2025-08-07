@@ -3,12 +3,12 @@
 
 use crate::core::*;
 use crate::exchange_types::{Exchange, ExchangeFees, CrossExchangeArb, StandardOrderBook, MultiHopArbitragePath};
-use crate::token_lists::{TARGET_TOKENS, normalize_symbol, extract_exchange};
+use crate::token_lists::TARGET_TOKENS;
 use crate::config::get_config;
-use log::{info, warn, debug, error};
+use log::{info, warn};
 use std::collections::{HashMap, HashSet, VecDeque};
 use lazy_static::lazy_static;
-use std::sync::{Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock};
 use csv::Writer;
 use crate::utils::ensure_exchange_prefix;
 use crate::error_handling::init_error_tracker;
@@ -122,7 +122,7 @@ impl ScalingRelationship {
 }
 
 // Function to update exchange relationships with new price observations
-fn update_exchange_scaling(
+async fn update_exchange_scaling(
     symbol: &str,
     exchange1: Exchange,
     exchange2: Exchange,
@@ -138,7 +138,7 @@ fn update_exchange_scaling(
     let ratio = price2 / price1;
     
     // Update the relationship in our database
-    let mut relationships = EXCHANGE_SCALING_RELATIONSHIPS.write().unwrap();
+    let mut relationships = EXCHANGE_SCALING_RELATIONSHIPS.write().await;
     
     // Create key for both directions (we'll store the relationship once)
     let key = if exchange1 as usize <= exchange2 as usize {
@@ -161,8 +161,8 @@ fn update_exchange_scaling(
 }
 
 // Function to get a learned scaling factor if available
-fn get_learned_scaling_factor(symbol: &str, from_exchange: Exchange, to_exchange: Exchange) -> Option<f64> {
-    let relationships = EXCHANGE_SCALING_RELATIONSHIPS.read().unwrap();
+async fn get_learned_scaling_factor(symbol: &str, from_exchange: Exchange, to_exchange: Exchange) -> Option<f64> {
+    let relationships = EXCHANGE_SCALING_RELATIONSHIPS.read().await;
     
     // Try in the original direction
     let key1 = (symbol.to_string(), from_exchange, to_exchange);
@@ -184,7 +184,7 @@ fn get_learned_scaling_factor(symbol: &str, from_exchange: Exchange, to_exchange
 }
 
 /// Enhanced detection of scaling differences between exchanges
-fn detect_scaling_difference(
+async fn detect_scaling_difference(
     symbol: &str,
     buy_exchange: Exchange,
     sell_exchange: Exchange,
@@ -192,7 +192,7 @@ fn detect_scaling_difference(
     sell_price: f64
 ) -> Option<f64> {
     // First check if we have a learned scaling factor
-    if let Some(learned_factor) = get_learned_scaling_factor(symbol, buy_exchange, sell_exchange) {
+    if let Some(learned_factor) = get_learned_scaling_factor(symbol, buy_exchange, sell_exchange).await {
         // Check if the current ratio is close to our learned factor
         let current_ratio = sell_price / buy_price;
         if (current_ratio / learned_factor - 1.0).abs() < 0.05 {
@@ -279,11 +279,11 @@ fn extract_base_token(symbol: &str) -> &str {
 }
 
 // Helper function to normalize price between exchanges
-fn normalize_price(exchange: Exchange, symbol: &str, price: f64) -> f64 {
+async fn normalize_price(exchange: Exchange, symbol: &str, price: f64) -> f64 {
     let base_token = extract_base_token(symbol);
     
     // Get scaling factor from learned relationships
-    if let Some(scaling_factor) = get_learned_scaling_factor(symbol, exchange, Exchange::Phemex) {
+    if let Some(scaling_factor) = get_learned_scaling_factor(symbol, exchange, Exchange::Phemex).await {
         return price * scaling_factor;
     }
     
@@ -300,20 +300,20 @@ fn normalize_price(exchange: Exchange, symbol: &str, price: f64) -> f64 {
 }
 
 /// Buffer a profitable cross-exchange opportunity.
-pub fn buffer_cross_exchange_opportunity(arb: CrossExchangeArb) {
-    let mut buf = CROSS_EX_BUFFER.lock().unwrap();
+pub async fn buffer_cross_exchange_opportunity(arb: CrossExchangeArb) {
+    let mut buf = CROSS_EX_BUFFER.lock().await;
     buf.push(arb);
 }
 
 /// Buffer a profitable multi-hop arbitrage opportunity
-pub fn buffer_multi_hop_opportunity(arb: MultiHopArbitragePath) {
-    let mut buf = MULTI_HOP_BUFFER.lock().unwrap();
+pub async fn buffer_multi_hop_opportunity(arb: MultiHopArbitragePath) {
+    let mut buf = MULTI_HOP_BUFFER.lock().await;
     buf.push(arb);
 }
 
 /// Flush the cross-exchange opportunity buffer to a CSV file.
 pub async fn flush_cross_ex_buffer(filename: &str) -> Result<(), AppError> {
-    let mut buf = CROSS_EX_BUFFER.lock().unwrap();
+    let mut buf = CROSS_EX_BUFFER.lock().await;
     if buf.is_empty() {
         return Ok(());
     }
@@ -321,24 +321,24 @@ pub async fn flush_cross_ex_buffer(filename: &str) -> Result<(), AppError> {
     // Sort the opportunities by net profit percentage (descending)
     buf.sort_by(|a, b| b.net_profit_pct.partial_cmp(&a.net_profit_pct).unwrap_or(std::cmp::Ordering::Equal));
     
-    let file = std::fs::OpenOptions::new()
+    let file = tokio::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(filename)?;
-    
-    let mut writer = Writer::from_writer(file);
-    
+        .open(filename).await?;
+
+    let mut writer = Writer::from_writer(file.into_std().await);
+
     // If the file is empty, write a header.
-    let metadata = std::fs::metadata(filename)?;
+    let metadata = tokio::fs::metadata(filename).await?;
     if metadata.len() == 0 {
-        writer.write_record(&[
+        writer.write_record([
             "timestamp", "symbol", "buy_exchange", "sell_exchange",
             "buy_price", "sell_price", "profit_pct", "net_profit_pct"
         ])?;
     }
     
     for record in buf.iter() {
-        writer.write_record(&[
+        writer.write_record([
             &format!("{}", record.timestamp),
             &record.symbol,
             &format!("{:?}", record.buy_exchange),
@@ -355,7 +355,7 @@ pub async fn flush_cross_ex_buffer(filename: &str) -> Result<(), AppError> {
     buf.clear();
     
     // Also clean out stale tracked opportunities
-    let mut recent_opps = RECENT_OPPORTUNITIES.lock().unwrap();
+    let mut recent_opps = RECENT_OPPORTUNITIES.lock().await;
     if recent_opps.len() > 2000 {
         info!("Clearing opportunity tracking cache of {} items", recent_opps.len());
         recent_opps.clear();
@@ -366,7 +366,7 @@ pub async fn flush_cross_ex_buffer(filename: &str) -> Result<(), AppError> {
 
 /// Flush multi-hop arbitrage opportunities to CSV file
 pub async fn flush_multi_hop_buffer(filename: &str) -> Result<(), AppError> {
-    let mut buf = MULTI_HOP_BUFFER.lock().unwrap();
+    let mut buf = MULTI_HOP_BUFFER.lock().await;
     if buf.is_empty() {
         return Ok(());
     }
@@ -374,29 +374,29 @@ pub async fn flush_multi_hop_buffer(filename: &str) -> Result<(), AppError> {
     // Sort by net profit percentage
     buf.sort_by(|a, b| b.net_profit_pct.partial_cmp(&a.net_profit_pct).unwrap_or(std::cmp::Ordering::Equal));
     
-    let file = std::fs::OpenOptions::new()
+    let file = tokio::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(filename)?;
-    
-    let mut writer = Writer::from_writer(file);
-    
+        .open(filename).await?;
+
+    let mut writer = Writer::from_writer(file.into_std().await);
+
     // If the file is empty, write a header
-    let metadata = std::fs::metadata(filename)?;
+    let metadata = tokio::fs::metadata(filename).await?;
     if metadata.len() == 0 {
-        writer.write_record(&[
+        writer.write_record([
             "timestamp", "path_id", "hop_count", "symbols", "exchanges", 
             "profit_pct", "net_profit_pct", "fees_pct", "slippage_pct"
         ])?;
     }
     
     for record in buf.iter() {
-        writer.write_record(&[
+        writer.write_record([
             &format!("{}", record.timestamp),
             &record.path_id,
             &format!("{}", record.symbol_path.len()),
             &record.symbol_path.join(":"),
-            &record.exchange_path.iter().map(|e| format!("{:?}", e)).collect::<Vec<_>>().join(":"),
+            &record.exchange_path.iter().map(|e| format!("{e:?}")).collect::<Vec<_>>().join(":"),
             &format!("{:.4}", record.total_profit_pct),
             &format!("{:.4}", record.net_profit_pct),
             &format!("{:.4}", record.total_fees_pct),
@@ -414,15 +414,15 @@ pub async fn flush_multi_hop_buffer(filename: &str) -> Result<(), AppError> {
 /// Create a unique key for an arbitrage opportunity
 #[inline(always)]
 fn get_opportunity_key(symbol: &str, buy_exchange: &Exchange, sell_exchange: &Exchange) -> String {
-    format!("{}:{:?}:{:?}", symbol, buy_exchange, sell_exchange)
+    format!("{symbol}:{buy_exchange:?}:{sell_exchange:?}")
 }
 
 /// Check if this opportunity was recently detected (to avoid duplicates)
 #[inline(always)]
-fn is_new_opportunity(symbol: &str, buy_exchange: Exchange, sell_exchange: Exchange) -> bool {
+async fn is_new_opportunity(symbol: &str, buy_exchange: Exchange, sell_exchange: Exchange) -> bool {
     let key = get_opportunity_key(symbol, &buy_exchange, &sell_exchange);
     
-    let mut recent_opps = RECENT_OPPORTUNITIES.lock().unwrap();
+    let mut recent_opps = RECENT_OPPORTUNITIES.lock().await;
     if recent_opps.contains(&key) {
         // We've already seen this opportunity recently
         return false;
@@ -442,8 +442,8 @@ fn is_price_reasonable(price: f64) -> bool {
 
 /// Check if a symbol is producing suspiciously many opportunities 
 #[inline(always)]
-fn is_symbol_suspicious(symbol: &str) -> bool {
-    let mut suspicious = SUSPICIOUS_SYMBOLS.lock().unwrap();
+async fn is_symbol_suspicious(symbol: &str) -> bool {
+    let mut suspicious = SUSPICIOUS_SYMBOLS.lock().await;
     
     // Increment count for this symbol
     let count = suspicious.entry(symbol.to_string()).or_insert(0);
@@ -451,7 +451,7 @@ fn is_symbol_suspicious(symbol: &str) -> bool {
     
     // If more than 20 opportunities from same symbol, mark as suspicious
     if *count > 20 {
-        info!("Symbol {} marked as suspicious with {} opportunities", symbol, count);
+        info!("Symbol {symbol} marked as suspicious with {count} opportunities");
         return true;
     }
     
@@ -465,7 +465,7 @@ fn is_symbol_suspicious(symbol: &str) -> bool {
 
 /// Check if an arbitrage opportunity passes sanity checks
 #[inline(always)]
-fn passes_sanity_checks(
+async fn passes_sanity_checks(
     symbol: &str,
     buy_exchange: Exchange,
     sell_exchange: Exchange,
@@ -481,10 +481,10 @@ fn passes_sanity_checks(
     }
     
     // Update exchange scaling knowledge (for future use)
-    update_exchange_scaling(symbol, buy_exchange, sell_exchange, buy_price, sell_price);
+    update_exchange_scaling(symbol, buy_exchange, sell_exchange, buy_price, sell_price).await;
     
     // Check for scaling differences between exchanges
-    if let Some(scale_factor) = detect_scaling_difference(symbol, buy_exchange, sell_exchange, buy_price, sell_price) {
+    if let Some(scale_factor) = detect_scaling_difference(symbol, buy_exchange, sell_exchange, buy_price, sell_price).await {
         // This is likely just a scaling difference, not a real opportunity
         info!("Ignoring exchange scaling difference for {}: ratio {:.4} (detected factor {:.4})", 
               symbol, sell_price / buy_price, scale_factor);
@@ -498,13 +498,12 @@ fn passes_sanity_checks(
     if net_profit_pct > max_reasonable_profit {
         // If we're still seeing suspiciously high profits after normalization,
         // it might be a data error
-        info!("Rejecting opportunity with abnormally high profit: {} with profit {:.2}%", 
-              symbol, net_profit_pct);
+        info!("Rejecting opportunity with abnormally high profit: {symbol} with profit {net_profit_pct:.2}%");
         return false;
     }
 
     // Check if this symbol is producing too many opportunities
-    if is_symbol_suspicious(symbol) {
+    if is_symbol_suspicious(symbol).await {
         return false;
     }
     
@@ -513,7 +512,7 @@ fn passes_sanity_checks(
 
 /// Compute cross-exchange profit with slippage
 #[inline(always)]
-pub fn compute_cross_exchange_profit_with_slippage(
+pub async fn compute_cross_exchange_profit_with_slippage(
     symbol: &str,
     buy_exchange: Exchange,
     sell_exchange: Exchange,
@@ -531,14 +530,14 @@ pub fn compute_cross_exchange_profit_with_slippage(
     }
     
     // First check if this is just a scaling difference
-    if let Some(_) = detect_scaling_difference(symbol, buy_exchange, sell_exchange, buy_price, sell_price) {
+    if detect_scaling_difference(symbol, buy_exchange, sell_exchange, buy_price, sell_price).await.is_some() {
         // It's a scaling difference, not a real opportunity
         return None;
     }
     
     // Normalize prices to account for exchange-specific scaling
-    let normalized_buy_price = normalize_price(buy_exchange, symbol, buy_price);
-    let normalized_sell_price = normalize_price(sell_exchange, symbol, sell_price);
+    let normalized_buy_price = normalize_price(buy_exchange, symbol, buy_price).await;
+    let normalized_sell_price = normalize_price(sell_exchange, symbol, sell_price).await;
     
     // Skip if no profit after normalization
     if normalized_sell_price <= normalized_buy_price {
@@ -667,7 +666,7 @@ pub fn compute_cross_exchange_profit_with_slippage(
 
 /// Compute potential profit for a cross-exchange arbitrage opportunity (Simple version)
 #[inline(always)]
-pub fn compute_cross_exchange_profit(
+pub async fn compute_cross_exchange_profit(
     symbol: &str,
     buy_exchange: Exchange,
     sell_exchange: Exchange,
@@ -682,8 +681,8 @@ pub fn compute_cross_exchange_profit(
     }
     
     // NEW: Normalize prices to account for exchange-specific scaling
-    let normalized_buy_price = normalize_price(buy_exchange, symbol, buy_price);
-    let normalized_sell_price = normalize_price(sell_exchange, symbol, sell_price);
+    let normalized_buy_price = normalize_price(buy_exchange, symbol, buy_price).await;
+    let normalized_sell_price = normalize_price(sell_exchange, symbol, sell_price).await;
     
     // Skip if no profit after normalization
     if normalized_sell_price <= normalized_buy_price {
@@ -982,7 +981,7 @@ fn find_profitable_paths(
                     } else {
                         // For the first hop, use the last exchange (completing the cycle)
                         if !state.exchanges.is_empty() {
-                            *exchange_map.get(&state.exchanges.last().unwrap()).unwrap_or(&Exchange::Phemex)
+                            *exchange_map.get(state.exchanges.last().unwrap()).unwrap_or(&Exchange::Phemex)
                         } else {
                             Exchange::Phemex // Default
                         }
@@ -1014,10 +1013,10 @@ fn find_profitable_paths(
                         };
                         
                         // Create trading pair symbol
-                        let trading_pair = format!("{}{}", symbol_str, next_symbol);
+                        let trading_pair = format!("{symbol_str}{next_symbol}");
                         
                         // Get orderbook
-                        let full_symbol = format!("{}:{}", exchange, trading_pair);
+                        let full_symbol = format!("{exchange}:{trading_pair}");
                         get_orderbook_for_exchange(app_state, &full_symbol)
                     })
                     .collect();
@@ -1125,7 +1124,7 @@ pub fn get_cross_exchange_symbols(app_state: &AppState) -> HashSet<String> {
 
         // Make sure we have a properly prefixed symbol
         let full_symbol = if !full_symbol.contains(':') {
-            warn!("Found unprefixed symbol in price_data: {}", full_symbol);
+            warn!("Found unprefixed symbol in price_data: {full_symbol}");
             ensure_exchange_prefix(full_symbol, "UNKNOWN")
         } else {
             full_symbol.clone()
@@ -1153,7 +1152,7 @@ pub fn get_cross_exchange_symbols(app_state: &AppState) -> HashSet<String> {
                 // Add to exchange-specific set
                 if let Some(exch) = exchange {
                     exchange_symbols.entry(exch)
-                        .or_insert_with(HashSet::new)
+                        .or_default()
                         .insert(symbol);
                 }
             }
@@ -1206,8 +1205,7 @@ pub fn get_normalized_cross_exchange_symbols(app_state: &AppState) -> HashSet<St
         // 3. Standardizing common quote currencies
         let normalized = original_symbol
             .to_uppercase()
-            .replace('_', "")
-            .replace('-', "");
+            .replace(['_', '-'], "");
             
         // Parse exchange
         let exchange = match exchange_str {
@@ -1225,13 +1223,13 @@ pub fn get_normalized_cross_exchange_symbols(app_state: &AppState) -> HashSet<St
             // Add to exchange-specific set (original format)
             exchange_symbols
                 .entry(exch)
-                .or_insert_with(HashSet::new)
+                .or_default()
                 .insert(original_symbol.clone());
                 
             // Add to normalized mapping
             normalized_map
                 .entry(normalized)
-                .or_insert_with(HashSet::new)
+                .or_default()
                 .insert((exch, original_symbol));
         }
     }
@@ -1276,7 +1274,7 @@ pub fn get_target_cross_exchange_symbols(app_state: &AppState) -> HashSet<String
 }
 
 /// Process cross-exchange arbitrage opportunities for all symbols
-pub fn process_cross_exchange_arbitrage(
+pub async fn process_cross_exchange_arbitrage(
     app_state: &AppState,
     exchange_fees: &HashMap<Exchange, ExchangeFees>,
 ) -> Vec<CrossExchangeArb> {
@@ -1299,7 +1297,7 @@ pub fn process_cross_exchange_arbitrage(
             app_state,
             &symbol,
             exchange_fees
-        );
+        ).await;
         
         // Add to all opportunities
         all_opportunities.extend(opportunities);
@@ -1314,7 +1312,7 @@ pub fn process_cross_exchange_arbitrage(
 }
 
 /// Find cross-exchange opportunities for a single symbol
-pub fn find_cross_exchange_opportunities(
+pub async fn find_cross_exchange_opportunities(
     app_state: &AppState,
     symbol: &str,
     exchange_fees: &HashMap<Exchange, ExchangeFees>,
@@ -1345,8 +1343,8 @@ pub fn find_cross_exchange_opportunities(
             }
             
             // Form exchange-specific symbols
-            let buy_symbol = format!("{}:{}", buy_exchange, symbol);
-            let sell_symbol = format!("{}:{}", sell_exchange, symbol);
+            let buy_symbol = format!("{buy_exchange}:{symbol}");
+            let sell_symbol = format!("{sell_exchange}:{symbol}");
             
             // Get price data for both exchanges
             if let (Some(buy_data), Some(sell_data)) = (
@@ -1357,8 +1355,8 @@ pub fn find_cross_exchange_opportunities(
                 let sell_price = sell_data.best_bid; // Sell at bid price
                 
                 // Fast path: Apply normalization for initial check
-                let normalized_buy_price = normalize_price(buy_exchange, symbol, buy_price);
-                let normalized_sell_price = normalize_price(sell_exchange, symbol, sell_price);
+                let normalized_buy_price = normalize_price(buy_exchange, symbol, buy_price).await;
+                let normalized_sell_price = normalize_price(sell_exchange, symbol, sell_price).await;
                 
                 // Skip if no gross profit possible after normalization
                 if normalized_sell_price <= normalized_buy_price {
@@ -1379,7 +1377,7 @@ pub fn find_cross_exchange_opportunities(
                     buy_orderbook,
                     sell_orderbook,
                     exchange_fees
-                ) {
+                ).await {
                     // Add additional validation
                     if passes_sanity_checks(
                         symbol,
@@ -1388,7 +1386,7 @@ pub fn find_cross_exchange_opportunities(
                         opportunity.buy_price,
                         opportunity.sell_price,
                         opportunity.net_profit_pct
-                    ) && is_new_opportunity(symbol, buy_exchange, sell_exchange) {
+                    ).await && is_new_opportunity(symbol, buy_exchange, sell_exchange).await {
                         // Ensure this is a significant opportunity worth noting
                         if opportunity.net_profit_pct >= get_config().arbitrage.min_profit_threshold_pct {
                             opportunities.push(opportunity);
@@ -1403,7 +1401,7 @@ pub fn find_cross_exchange_opportunities(
 }
 
 /// Process cross-exchange arbitrage with improved symbol mapping
-pub fn process_mapped_cross_exchange_arbitrage(
+pub async fn process_mapped_cross_exchange_arbitrage(
     app_state: &AppState,
     exchange_fees: &HashMap<Exchange, ExchangeFees>,
 ) -> Vec<CrossExchangeArb> {
@@ -1420,13 +1418,12 @@ pub fn process_mapped_cross_exchange_arbitrage(
         if parts.len() == 2 {
             // Normalize by removing '-' and '_' and converting to uppercase
             let normalized = parts[1]
-                .replace('-', "")
-                .replace('_', "")
+                .replace(['-', '_'], "")
                 .to_uppercase();
             
             normalized_symbols
                 .entry(normalized)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(full_symbol);
         }
     }
@@ -1521,8 +1518,8 @@ pub fn process_mapped_cross_exchange_arbitrage(
                 }
                 
                 // Normalize prices for fast path check
-                let normalized_buy_price = normalize_price(buy_exchange, &normalized, buy_price);
-                let normalized_sell_price = normalize_price(sell_exchange, &normalized, sell_price);
+                let normalized_buy_price = normalize_price(buy_exchange, &normalized, buy_price).await;
+                let normalized_sell_price = normalize_price(sell_exchange, &normalized, sell_price).await;
                 
                 // Skip if no gross profit possible after normalization
                 if normalized_sell_price <= normalized_buy_price {
@@ -1542,7 +1539,7 @@ pub fn process_mapped_cross_exchange_arbitrage(
                     buy_orderbook,
                     sell_orderbook,
                     exchange_fees
-                ) {
+                ).await {
                     // Add the new validation steps
                     if passes_sanity_checks(
                         &normalized,
@@ -1551,7 +1548,7 @@ pub fn process_mapped_cross_exchange_arbitrage(
                         opportunity.buy_price,
                         opportunity.sell_price,
                         opportunity.net_profit_pct
-                    ) && is_new_opportunity(&normalized, buy_exchange, sell_exchange) {
+                    ).await && is_new_opportunity(&normalized, buy_exchange, sell_exchange).await {
                         all_opportunities.push(opportunity);
                     }
                 }
@@ -1567,7 +1564,7 @@ pub fn process_mapped_cross_exchange_arbitrage(
 }
 
 /// Process a subset of symbols for parallel scanning
-pub fn process_mapped_cross_exchange_arbitrage_subset(
+pub async fn process_mapped_cross_exchange_arbitrage_subset(
     app_state: &AppState,
     exchange_fees: &HashMap<Exchange, ExchangeFees>,
     symbols: &HashSet<String>
@@ -1585,15 +1582,14 @@ pub fn process_mapped_cross_exchange_arbitrage_subset(
         if parts.len() == 2 {
             // Normalize by removing '-' and '_' and converting to uppercase
             let normalized = parts[1]
-                .replace('-', "")
-                .replace('_', "")
+                .replace(['-', '_'], "")
                 .to_uppercase();
             
             // Only process symbols in our subset
             if symbols.contains(&normalized) {
                 normalized_symbols
                     .entry(normalized)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(full_symbol);
             }
         }
@@ -1689,8 +1685,8 @@ pub fn process_mapped_cross_exchange_arbitrage_subset(
                 }
                 
                 // Normalize prices for fast path check
-                let normalized_buy_price = normalize_price(buy_exchange, &normalized, buy_price);
-                let normalized_sell_price = normalize_price(sell_exchange, &normalized, sell_price);
+                let normalized_buy_price = normalize_price(buy_exchange, &normalized, buy_price).await;
+                let normalized_sell_price = normalize_price(sell_exchange, &normalized, sell_price).await;
                 
                 // Skip if no gross profit possible after normalization
                 if normalized_sell_price <= normalized_buy_price {
@@ -1710,7 +1706,7 @@ pub fn process_mapped_cross_exchange_arbitrage_subset(
                     buy_orderbook,
                     sell_orderbook,
                     exchange_fees
-                ) {
+                ).await {
                     // Add the new validation steps
                     if passes_sanity_checks(
                         &normalized,
@@ -1719,7 +1715,7 @@ pub fn process_mapped_cross_exchange_arbitrage_subset(
                         opportunity.buy_price,
                         opportunity.sell_price,
                         opportunity.net_profit_pct
-                    ) && is_new_opportunity(&normalized, buy_exchange, sell_exchange) {
+                    ).await && is_new_opportunity(&normalized, buy_exchange, sell_exchange).await {
                         all_opportunities.push(opportunity);
                     }
                 }
@@ -1755,32 +1751,22 @@ pub fn build_exchange_fees() -> HashMap<Exchange, ExchangeFees> {
     }
     
     // Add fallbacks for any missing exchanges
-    if !fees.contains_key(&Exchange::Phemex) {
-        fees.insert(
-            Exchange::Phemex,
-            ExchangeFees::new(
+    fees.entry(Exchange::Phemex).or_insert_with(|| ExchangeFees::new(
                 Exchange::Phemex,
                 0.001, // 0.1% maker
                 0.0006 // 0.06% taker
-            )
-        );
-    }
+            ));
     
     // Add other exchanges as needed
     for exchange in [
         Exchange::LBank, Exchange::XtCom, Exchange::TapBit, 
         Exchange::Hbit, Exchange::Batonex, Exchange::CoinCatch
     ] {
-        if !fees.contains_key(&exchange) {
-            fees.insert(
-                exchange,
-                ExchangeFees::new(
+        fees.entry(exchange).or_insert_with(|| ExchangeFees::new(
                     exchange,
                     0.001, // Default 0.1% maker
                     0.0006 // Default 0.06% taker
-                )
-            );
-        }
+                ));
     }
     
     fees

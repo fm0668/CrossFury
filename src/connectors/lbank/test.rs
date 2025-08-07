@@ -6,7 +6,8 @@ mod tests {
     use crate::connectors::traits::ExchangeConnector;
     use crate::core::AppState;
     use crate::types::{
-        config::{ConnectorConfig, SubscriptionConfig, DataType, UpdateSpeed, ConnectionStatus},
+        config::{ConnectorConfig, SubscriptionConfig, UpdateSpeed, ConnectionStatus},
+        common::DataType,
         market_data::StandardizedMessage,
     };
     use tokio::sync::mpsc;
@@ -34,7 +35,7 @@ mod tests {
     fn create_test_subscription() -> SubscriptionConfig {
         SubscriptionConfig {
             symbols: vec!["BTCUSDT".to_string(), "ETHUSDT".to_string()],
-            data_types: vec![DataType::OrderBook, DataType::Trades],
+            data_types: vec![DataType::OrderBook, DataType::Trade],
             depth_levels: Some(10),
             update_speed: Some(UpdateSpeed::Fast),
         }
@@ -51,7 +52,7 @@ mod tests {
         let mut connector = LBankConnector::new(config, Arc::new(app_state));
         
         // 验证连接器创建成功
-        let status = connector.get_connection_status();
+        let status = connector.get_connection_status().await;
         assert_eq!(status, ConnectionStatus::Disconnected);
         
         info!("✅ LBank连接器创建测试通过");
@@ -64,14 +65,14 @@ mod tests {
         let config = create_test_config();
         let app_state = AppState::new();
         
-        let mut connector = LBankConnector::new(config, Arc::new(app_state));
+        let connector = LBankConnector::new(config, Arc::new(app_state));
         
         // 测试连接
         let result = connector.connect_websocket().await;
         assert!(result.is_ok(), "连接应该成功");
         
         // 验证连接状态
-        let status = connector.get_connection_status();
+        let status = connector.get_connection_status().await;
         assert_eq!(status, ConnectionStatus::Connected);
         
         info!("✅ LBank连接器连接测试通过");
@@ -84,7 +85,7 @@ mod tests {
         let config = create_test_config();
         let app_state = AppState::new();
         
-        let mut connector = LBankConnector::new(config, Arc::new(app_state));
+        let connector = LBankConnector::new(config, Arc::new(app_state));
         
         // 先连接
         let _ = connector.connect_websocket().await;
@@ -94,7 +95,7 @@ mod tests {
         assert!(result.is_ok(), "断开连接应该成功");
         
         // 验证连接状态
-        let status = connector.get_connection_status();
+        let status = connector.get_connection_status().await;
         assert_eq!(status, ConnectionStatus::Disconnected);
         
         info!("✅ LBank连接器断开连接测试通过");
@@ -107,7 +108,7 @@ mod tests {
         let config = create_test_config();
         let app_state = AppState::new();
         
-        let mut connector = LBankConnector::new(config, Arc::new(app_state));
+        let connector = LBankConnector::new(config, Arc::new(app_state));
         
         // 测试健康检查
         let result = connector.health_check().await;
@@ -157,7 +158,7 @@ mod tests {
         let config = create_test_config();
         let app_state = AppState::new();
         
-        let mut connector = LBankConnector::new(config, Arc::new(app_state));
+        let connector = LBankConnector::new(config, Arc::new(app_state));
         
         // 测试获取订单簿（没有数据时应该返回错误）
         let result = connector.get_latest_orderbook("BTCUSDT").await;
@@ -186,8 +187,11 @@ mod tests {
             order_type: OrderType::Limit,
             quantity: 0.001,
             price: Some(50000.0),
-            time_in_force: TimeInForce::GTC,
+            time_in_force: Some(TimeInForce::GTC),
             client_order_id: Some("test_order".to_string()),
+            reduce_only: Some(false),
+            close_position: Some(false),
+            position_side: Some(crate::types::orders::PositionSide::Both),
         };
         
         let result = connector.place_order(&order).await;
@@ -212,7 +216,7 @@ mod tests {
         let config = create_test_config();
         let app_state = AppState::new();
         
-        let mut connector = LBankConnector::new(config, Arc::new(app_state));
+        let connector = LBankConnector::new(config, Arc::new(app_state));
         
         // 测试获取连接统计
         let result = connector.get_connection_stats().await;
@@ -234,7 +238,8 @@ mod integration_tests {
     use super::super::adapter::LBankConnector;
     use crate::connectors::traits::ExchangeConnector;
     use crate::core::AppState;
-    use crate::types::config::{ConnectorConfig, SubscriptionConfig, DataType, UpdateSpeed};
+    use crate::types::config::{ConnectorConfig, SubscriptionConfig, UpdateSpeed};
+use crate::types::common::DataType;
     use std::sync::Arc;
     use std::time::Duration;
     use tokio::time::timeout;

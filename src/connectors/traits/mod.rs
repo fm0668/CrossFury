@@ -3,7 +3,10 @@
 use async_trait::async_trait;
 use tokio::sync::{mpsc, broadcast};
 use std::collections::HashMap;
+use std::time::Duration;
+use chrono;
 use crate::types::*;
+use crate::types::config::BatchSubscriptionResult;
 
 /// ExchangeConnector trait - 完全按照CrossFury_核心Trait定义.md实现
 #[async_trait]
@@ -25,8 +28,8 @@ pub trait ExchangeConnector: Send + Sync {
     fn get_user_data_stream(&self) -> mpsc::UnboundedReceiver<StandardizedMessage>;
     
     // 本地缓存快照读取
-    fn get_orderbook_snapshot(&self, symbol: &str) -> Option<StandardizedOrderBook>;
-    fn get_recent_trades_snapshot(&self, symbol: &str, limit: usize) -> Vec<StandardizedTrade>;
+    async fn get_orderbook_snapshot(&self, symbol: &str) -> Option<StandardizedOrderBook>;
+    async fn get_recent_trades_snapshot(&self, symbol: &str, limit: usize) -> Vec<StandardizedTrade>;
     
     // 交易相关操作 (REST API)
     async fn place_order(&self, order: &OrderRequest) -> Result<OrderResponse, ConnectorError>;
@@ -35,9 +38,57 @@ pub trait ExchangeConnector: Send + Sync {
     async fn get_account_balance(&self) -> Result<AccountBalance, ConnectorError>;
     
     // 连接状态
-    fn is_connected(&self) -> bool;
-    fn is_websocket_connected(&self) -> bool;
-    fn get_connection_status(&self) -> ConnectionStatus;
+    async fn is_connected(&self) -> bool;
+    async fn is_websocket_connected(&self) -> bool;
+    async fn get_connection_status(&self) -> ConnectionStatus;
+    
+    // 高级连接管理功能 - 提供默认实现以保持向后兼容
+    async fn get_connection_quality(&self) -> Result<ConnectionQuality, ConnectorError> {
+        // 默认实现：返回基础连接质量信息
+        Ok(ConnectionQuality {
+            latency_ms: 100.0,
+            packet_loss_rate: 0.0,
+            stability_score: 0.8,
+            last_updated: chrono::Utc::now(),
+        })
+    }
+    
+    async fn emergency_ping(&self) -> Result<Duration, ConnectorError> {
+        // 默认实现：返回模拟的ping时间
+        Ok(Duration::from_millis(50))
+    }
+    
+    async fn subscribe_batch(
+        &self, 
+        symbols: Vec<String>, 
+        batch_size: usize
+    ) -> Result<BatchSubscriptionResult, ConnectorError> {
+        // 默认实现：逐个订阅（回退到基础实现）
+        let mut successful_count = 0;
+        let mut failed_symbols = Vec::new();
+        let total_requested = symbols.len();
+        
+        for symbol in symbols {
+            match self.subscribe_orderbook(&symbol).await {
+                Ok(_) => successful_count += 1,
+                Err(e) => failed_symbols.push((symbol, e.to_string())),
+            }
+        }
+        
+        Ok(BatchSubscriptionResult {
+            total_requested,
+            successful: successful_count,
+            failed: failed_symbols.len(),
+            pending: 0,
+            failed_symbols,
+            results: Vec::new(),
+        })
+    }
+    
+    async fn get_subscription_status(&self) -> Result<HashMap<String, SubscriptionStatus>, ConnectorError> {
+        // 默认实现：返回空的订阅状态
+        Ok(HashMap::new())
+    }
 }
 
 /// DataFlowManager trait - 完全按照核心Trait定义实现

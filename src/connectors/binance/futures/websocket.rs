@@ -1,0 +1,741 @@
+//! Binance期货WebSocket处理模块
+//! 
+//! 实现期货交易所的WebSocket连接、订阅管理和消息处理
+
+use crate::connectors::binance::futures::config::{BinanceFuturesConfig, PositionSide};
+use crate::connectors::binance::futures::constants::*;
+use crate::types::market_data::*;
+use crate::types::trading::*;
+use crate::core::AppError;
+
+// 定义Result类型别名
+pub type Result<T> = std::result::Result<T, AppError>;
+
+use tokio_tungstenite::{connect_async, tungstenite::Message, WebSocketStream, MaybeTlsStream};
+use futures_util::{SinkExt, StreamExt, stream::{SplitSink, SplitStream}};
+use tokio::net::TcpStream;
+use tokio::sync::{mpsc, Mutex, RwLock};
+use serde_json::{Value, json};
+use std::collections::HashMap;
+use std::sync::Arc;
+use log::{info, error, debug, warn};
+use chrono::{DateTime, Utc};
+use std::time::Duration;
+
+/// Binance期货WebSocket处理器
+pub struct BinanceFuturesWebSocketHandler {
+    /// 配置信息
+    config: BinanceFuturesConfig,
+    /// WebSocket读取流
+    ws_stream: Option<SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>>,
+    /// WebSocket写入端
+    ws_sink: Option<Arc<Mutex<SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>>>>,
+    /// 数据发送通道
+    data_sender: Option<mpsc::UnboundedSender<MarketDataEvent>>,
+    /// 交易事件发送通道
+    trade_sender: Option<mpsc::UnboundedSender<TradeEvent>>,
+    /// 账户事件发送通道
+    account_sender: Option<mpsc::UnboundedSender<AccountEvent>>,
+    /// 订阅管理
+    subscriptions: Arc<RwLock<HashMap<String, SubscriptionInfo>>>,
+    /// 连接状态
+    is_connected: Arc<RwLock<bool>>,
+    /// 最后心跳时间
+    last_heartbeat: Arc<RwLock<DateTime<Utc>>>,
+}
+
+/// 订阅信息
+#[derive(Debug, Clone)]
+struct SubscriptionInfo {
+    stream_name: String,
+    symbol: String,
+    stream_type: StreamType,
+    is_active: bool,
+}
+
+/// 流类型
+#[derive(Debug, Clone, PartialEq)]
+enum StreamType {
+    Depth,
+    Trade,
+    Kline(String), // 时间间隔
+    Ticker,
+    MarkPrice,
+    FundingRate,
+    OpenInterest,
+    UserData,
+}
+
+/// 账户事件类型
+#[derive(Debug, Clone)]
+pub enum AccountEvent {
+    /// 账户更新
+    AccountUpdate {
+        balances: Vec<FuturesBalance>,
+        positions: Vec<FuturesPosition>,
+        timestamp: i64,
+    },
+    /// 订单更新
+    OrderUpdate {
+        order: FuturesOrder,
+        timestamp: i64,
+    },
+    /// 持仓更新
+    PositionUpdate {
+        position: FuturesPosition,
+        timestamp: i64,
+    },
+    /// 保证金调用
+    MarginCall {
+        positions: Vec<FuturesPosition>,
+        timestamp: i64,
+    },
+}
+
+/// 期货余额信息
+#[derive(Debug, Clone)]
+pub struct FuturesBalance {
+    pub asset: String,
+    pub wallet_balance: f64,
+    pub unrealized_pnl: f64,
+    pub margin_balance: f64,
+    pub maint_margin: f64,
+    pub initial_margin: f64,
+    pub position_initial_margin: f64,
+    pub open_order_initial_margin: f64,
+    pub cross_wallet_balance: f64,
+    pub cross_unrealized_pnl: f64,
+    pub available_balance: f64,
+    pub max_withdraw_amount: f64,
+}
+
+/// 期货持仓信息
+#[derive(Debug, Clone)]
+pub struct FuturesPosition {
+    pub symbol: String,
+    pub position_amt: f64,
+    pub entry_price: f64,
+    pub mark_price: f64,
+    pub unrealized_profit: f64,
+    pub liquidation_price: f64,
+    pub leverage: u8,
+    pub max_notional_value: f64,
+    pub margin_type: String,
+    pub isolated_margin: f64,
+    pub is_auto_add_margin: bool,
+    pub position_side: PositionSide,
+    pub notional: f64,
+    pub isolated_wallet: f64,
+    pub update_time: i64,
+}
+
+/// 期货订单信息
+#[derive(Debug, Clone)]
+pub struct FuturesOrder {
+    pub symbol: String,
+    pub order_id: i64,
+    pub client_order_id: String,
+    pub price: f64,
+    pub orig_qty: f64,
+    pub executed_qty: f64,
+    pub cumulative_quote_qty: f64,
+    pub status: String,
+    pub time_in_force: String,
+    pub order_type: String,
+    pub side: String,
+    pub stop_price: f64,
+    pub iceberg_qty: f64,
+    pub time: i64,
+    pub update_time: i64,
+    pub is_working: bool,
+    pub orig_quote_order_qty: f64,
+    pub position_side: PositionSide,
+    pub close_position: bool,
+    pub activation_price: f64,
+    pub callback_rate: f64,
+    pub working_type: String,
+    pub price_protect: bool,
+}
+
+impl BinanceFuturesWebSocketHandler {
+    /// 创建新的WebSocket处理器
+    pub fn new(config: BinanceFuturesConfig) -> Self {
+        Self {
+            config,
+            ws_stream: None,
+            ws_sink: None,
+            data_sender: None,
+            trade_sender: None,
+            account_sender: None,
+            subscriptions: Arc::new(RwLock::new(HashMap::new())),
+            is_connected: Arc::new(RwLock::new(false)),
+            last_heartbeat: Arc::new(RwLock::new(Utc::now())),
+        }
+    }
+    
+    /// 设置数据发送通道
+    pub fn set_data_sender(&mut self, sender: mpsc::UnboundedSender<MarketDataEvent>) {
+        self.data_sender = Some(sender);
+    }
+    
+    /// 设置交易事件发送通道
+    pub fn set_trade_sender(&mut self, sender: mpsc::UnboundedSender<TradeEvent>) {
+        self.trade_sender = Some(sender);
+    }
+    
+    /// 设置账户事件发送通道
+    pub fn set_account_sender(&mut self, sender: mpsc::UnboundedSender<AccountEvent>) {
+        self.account_sender = Some(sender);
+    }
+    
+    /// 连接WebSocket
+    pub async fn connect(&mut self) -> Result<()> {
+        let ws_url = if self.config.testnet {
+            BINANCE_FUTURES_TESTNET_WS_URL
+        } else {
+            BINANCE_FUTURES_WS_URL
+        };
+        
+        info!("正在连接Binance期货WebSocket: {ws_url}");
+        
+        // 使用超时机制连接
+        let (ws_stream, _) = tokio::time::timeout(
+            std::time::Duration::from_secs(15),
+            connect_async(ws_url)
+        ).await
+            .map_err(|_| AppError::WebSocketError("连接超时".to_string()))?
+            .map_err(|e| AppError::WebSocketError(format!("连接失败: {e}")))?;
+        
+        // 分割WebSocket流为读写两部分
+        let (ws_sink, ws_read) = ws_stream.split();
+        
+        // 保存sink用于发送消息
+        self.ws_sink = Some(Arc::new(Mutex::new(ws_sink)));
+        
+        // 保存读取流用于消息处理
+        self.ws_stream = Some(ws_read);
+        
+        *self.is_connected.write().await = true;
+        *self.last_heartbeat.write().await = Utc::now();
+        
+        info!("Binance期货WebSocket连接成功");
+        Ok(())
+    }
+    
+    /// 订阅深度数据
+    pub async fn subscribe_depth(&mut self, symbol: &str, levels: Option<u8>) -> Result<()> {
+        let levels_str = levels.unwrap_or(20).to_string();
+        let stream_name = format!("{}@depth{}@100ms", symbol.to_lowercase(), levels_str);
+        
+        self.subscribe_stream(&stream_name, symbol, StreamType::Depth).await
+    }
+    
+    /// 订阅交易数据
+    pub async fn subscribe_trades(&mut self, symbol: &str) -> Result<()> {
+        let stream_name = format!("{}@aggTrade", symbol.to_lowercase());
+        
+        self.subscribe_stream(&stream_name, symbol, StreamType::Trade).await
+    }
+    
+    /// 订阅K线数据
+    pub async fn subscribe_klines(&mut self, symbol: &str, interval: &str) -> Result<()> {
+        let stream_name = format!("{}@kline_{}", symbol.to_lowercase(), interval);
+        
+        self.subscribe_stream(&stream_name, symbol, StreamType::Kline(interval.to_string())).await
+    }
+    
+    /// 订阅24小时价格统计
+    pub async fn subscribe_ticker(&mut self, symbol: &str) -> Result<()> {
+        let stream_name = format!("{}@ticker", symbol.to_lowercase());
+        
+        self.subscribe_stream(&stream_name, symbol, StreamType::Ticker).await
+    }
+    
+    /// 订阅标记价格
+    pub async fn subscribe_mark_price(&mut self, symbol: &str) -> Result<()> {
+        let stream_name = format!("{}@markPrice", symbol.to_lowercase());
+        
+        self.subscribe_stream(&stream_name, symbol, StreamType::MarkPrice).await
+    }
+    
+    /// 订阅资金费率
+    pub async fn subscribe_funding_rate(&mut self) -> Result<()> {
+        let stream_name = "!markPrice@arr".to_string();
+        
+        self.subscribe_stream(&stream_name, "ALL", StreamType::FundingRate).await
+    }
+    
+    /// 订阅持仓量
+    pub async fn subscribe_open_interest(&mut self, symbol: &str) -> Result<()> {
+        let stream_name = format!("{}@openInterest", symbol.to_lowercase());
+        
+        self.subscribe_stream(&stream_name, symbol, StreamType::OpenInterest).await
+    }
+    
+    /// 通用订阅方法
+    async fn subscribe_stream(&mut self, stream_name: &str, symbol: &str, stream_type: StreamType) -> Result<()> {
+        if self.ws_sink.is_none() {
+            return Err(AppError::WebSocketError("WebSocket未连接".to_string()));
+        }
+        
+        let subscribe_msg = json!({
+            "method": "SUBSCRIBE",
+            "params": [stream_name],
+            "id": chrono::Utc::now().timestamp_millis()
+        });
+        
+        if let Some(ref ws_sink) = self.ws_sink {
+            let mut sink = ws_sink.lock().await;
+            
+            // 使用超时机制发送订阅消息
+            tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                sink.send(Message::Text(subscribe_msg.to_string()))
+            ).await
+                .map_err(|_| AppError::WebSocketError("发送订阅消息超时".to_string()))?
+                .map_err(|e| AppError::WebSocketError(format!("发送订阅消息失败: {e}")))?;
+        }
+        
+        // 记录订阅信息
+        let subscription_info = SubscriptionInfo {
+            stream_name: stream_name.to_string(),
+            symbol: symbol.to_string(),
+            stream_type,
+            is_active: true,
+        };
+        
+        self.subscriptions.write().await.insert(stream_name.to_string(), subscription_info);
+        
+        info!("已订阅期货流: {stream_name} ({symbol})");
+        Ok(())
+    }
+    
+    /// 取消订阅
+    pub async fn unsubscribe(&mut self, stream_name: &str) -> Result<()> {
+        if self.ws_sink.is_none() {
+            return Err(AppError::WebSocketError("WebSocket未连接".to_string()));
+        }
+        
+        let unsubscribe_msg = json!({
+            "method": "UNSUBSCRIBE",
+            "params": [stream_name],
+            "id": chrono::Utc::now().timestamp_millis()
+        });
+        
+        if let Some(ref ws_sink) = self.ws_sink {
+            let mut sink = ws_sink.lock().await;
+            
+            // 使用超时机制发送取消订阅消息
+            tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                sink.send(Message::Text(unsubscribe_msg.to_string()))
+            ).await
+                .map_err(|_| AppError::WebSocketError("发送取消订阅消息超时".to_string()))?
+                .map_err(|e| AppError::WebSocketError(format!("发送取消订阅消息失败: {e}")))?;
+        }
+        
+        // 移除订阅信息
+        self.subscriptions.write().await.remove(stream_name);
+        
+        info!("已取消订阅期货流: {stream_name}");
+        Ok(())
+    }
+    
+    /// 检查连接状态
+    pub async fn is_connected(&self) -> bool {
+        *self.is_connected.read().await
+    }
+    
+    /// 获取WebSocket sink的引用（用于高级连接管理）
+    pub async fn get_ws_sink(&self) -> Option<Arc<Mutex<SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>>>> {
+        self.ws_sink.clone()
+    }
+    
+    /// 断开连接
+    pub async fn disconnect(&mut self) -> Result<()> {
+        info!("正在断开Binance期货WebSocket连接...");
+        
+        // 设置连接状态为断开，这会停止心跳任务
+        *self.is_connected.write().await = false;
+        
+        // 等待心跳任务停止
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        
+        if let Some(ws_sink) = self.ws_sink.take() {
+            let mut sink = ws_sink.lock().await;
+            let _ = sink.close().await;
+        }
+        
+        self.ws_stream = None;
+        self.subscriptions.write().await.clear();
+        
+        info!("Binance期货WebSocket已断开连接");
+        Ok(())
+    }
+    
+    /// 获取活跃订阅列表
+    pub async fn get_active_subscriptions(&self) -> Vec<String> {
+        self.subscriptions.read().await
+            .values()
+            .filter(|sub| sub.is_active)
+            .map(|sub| sub.stream_name.clone())
+            .collect()
+    }
+    
+    /// 启动消息处理循环
+    pub async fn start_message_loop(&mut self) -> Result<()> {
+        if self.ws_stream.is_none() {
+            return Err(AppError::WebSocketError("WebSocket未连接".to_string()));
+        }
+        
+        let mut ws_stream = self.ws_stream.take().unwrap();
+        let data_sender = self.data_sender.clone();
+        let trade_sender = self.trade_sender.clone();
+        let account_sender = self.account_sender.clone();
+        let subscriptions = self.subscriptions.clone();
+        let is_connected = self.is_connected.clone();
+        let last_heartbeat = self.last_heartbeat.clone();
+        
+        // 获取已经存在的ws_sink引用
+        let ws_sink = self.ws_sink.clone().ok_or_else(|| {
+            AppError::WebSocketError("WebSocket sink未初始化".to_string())
+        })?;
+        
+        // 启动增强心跳任务
+        let ping_sink = ws_sink.clone();
+        let ping_is_connected = is_connected.clone();
+        let ping_last_heartbeat = last_heartbeat.clone();
+        let heartbeat_task = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
+            
+            // 等待连接稳定后再开始发送心跳
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            
+            loop {
+                interval.tick().await;
+                
+                // 检查连接状态
+                if !*ping_is_connected.read().await {
+                    debug!("心跳任务收到停止信号");
+                    break;
+                }
+                
+                debug!("发送期货WebSocket心跳");
+                let mut writer = ping_sink.lock().await;
+                if let Err(e) = writer.send(Message::Ping(vec![])).await {
+                    error!("发送心跳失败: {e}");
+                    break;
+                }
+                
+                // 更新心跳时间
+                *ping_last_heartbeat.write().await = Utc::now();
+            }
+            
+            debug!("期货WebSocket心跳任务结束");
+        });
+        
+        tokio::spawn(async move {
+            use futures_util::StreamExt;
+            
+            let mut consecutive_errors = 0;
+            let mut consecutive_timeouts = 0;
+            
+            loop {
+                match tokio::time::timeout(
+                    std::time::Duration::from_secs(10),
+                    ws_stream.next()
+                ).await {
+                    Ok(Some(Ok(Message::Text(text)))) => {
+                        consecutive_errors = 0;
+                        consecutive_timeouts = 0;
+                        
+                        if let Err(e) = Self::process_message(
+                            &text,
+                            &data_sender,
+                            &trade_sender,
+                            &account_sender,
+                            &subscriptions,
+                        ).await {
+                            error!("处理WebSocket消息失败: {e:?}");
+                        }
+                    }
+                    Ok(Some(Ok(Message::Ping(payload)))) => {
+                        consecutive_errors = 0;
+                        consecutive_timeouts = 0;
+                        
+                        use futures_util::SinkExt;
+                        let mut sink = ws_sink.lock().await;
+                        if let Err(e) = sink.send(Message::Pong(payload)).await {
+                            error!("发送Pong消息失败: {e:?}");
+                            break;
+                        }
+                    }
+                    Ok(Some(Ok(Message::Pong(_)))) => {
+                        consecutive_errors = 0;
+                        consecutive_timeouts = 0;
+                        debug!("收到Pong响应");
+                    }
+                    Ok(Some(Ok(Message::Close(_)))) => {
+                        info!("WebSocket连接已关闭");
+                        break;
+                    }
+                    Ok(Some(Ok(Message::Binary(_)))) => {
+                        consecutive_errors = 0;
+                        consecutive_timeouts = 0;
+                        debug!("收到二进制消息，忽略");
+                    }
+                    Ok(Some(Ok(Message::Frame(_)))) => {
+                        consecutive_errors = 0;
+                        consecutive_timeouts = 0;
+                        debug!("收到Frame消息，忽略");
+                    }
+                    Ok(Some(Err(e))) => {
+                        consecutive_errors += 1;
+                        
+                        // 根据错误类型进行不同处理
+                        match &e {
+                            tokio_tungstenite::tungstenite::Error::ConnectionClosed => {
+                                error!("连接已关闭");
+                                break;
+                            }
+                            tokio_tungstenite::tungstenite::Error::AlreadyClosed => {
+                                error!("连接已经关闭");
+                                break;
+                            }
+                            tokio_tungstenite::tungstenite::Error::Protocol(_) => {
+                                error!("协议错误: {e}");
+                                if consecutive_errors >= 2 {
+                                    error!("多次协议错误，断开连接");
+                                    break;
+                                }
+                            }
+                            _ => {
+                                error!("WebSocket错误: {e:?}");
+                                if consecutive_errors >= 3 {
+                                    error!("连续错误过多，断开连接");
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    Ok(None) => {
+                        info!("WebSocket流结束");
+                        break;
+                    }
+                    Err(_) => {
+                        consecutive_timeouts += 1;
+                        warn!("读取超时 ({consecutive_timeouts})");
+                        
+                        // 紧急ping策略
+                        if consecutive_timeouts == 1 {
+                            warn!("发送紧急ping以保持连接");
+                            let mut writer = ws_sink.lock().await;
+                            if let Err(e) = writer.send(Message::Ping(vec![])).await {
+                                error!("发送紧急ping失败: {e}");
+                                break;
+                            }
+                        } else if consecutive_timeouts >= 2 {
+                            error!("连续超时过多，断开连接");
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // 停止心跳任务
+            heartbeat_task.abort();
+            
+            *is_connected.write().await = false;
+            info!("期货WebSocket消息处理循环已退出");
+        });
+        
+        Ok(())
+    }
+    
+    /// 处理WebSocket消息
+    async fn process_message(
+        text: &str,
+        data_sender: &Option<mpsc::UnboundedSender<MarketDataEvent>>,
+        _trade_sender: &Option<mpsc::UnboundedSender<TradeEvent>>,
+        _account_sender: &Option<mpsc::UnboundedSender<AccountEvent>>,
+        _subscriptions: &Arc<RwLock<HashMap<String, SubscriptionInfo>>>,
+    ) -> Result<()> {
+        debug!("收到WebSocket消息: {text}");
+        
+        let msg: Value = serde_json::from_str(text)
+            .map_err(|e| AppError::ParseError(format!("解析JSON失败: {e}")))?;
+        
+        // 检查是否是订阅确认消息
+        if msg.get("result").is_some() {
+            debug!("收到订阅确认: {msg:?}");
+            return Ok(());
+        }
+        
+        // 处理流数据
+        if let Some(stream) = msg.get("stream").and_then(|s| s.as_str()) {
+            debug!("处理流数据: {stream}");
+            if let Some(data) = msg.get("data") {
+                if stream.contains("@depth") {
+                    debug!("处理深度数据: {data:?}");
+                    Self::process_depth_data(stream, data, data_sender).await?;
+                } else if stream.contains("@aggTrade") {
+                    // TODO: 处理交易数据
+                } else if stream.contains("@kline") {
+                    // TODO: 处理K线数据
+                } else if stream.contains("@ticker") {
+                    // TODO: 处理24小时价格统计
+                } else if stream.contains("@markPrice") {
+                    // TODO: 处理标记价格
+                }
+            }
+        } else {
+            // 可能是直接的深度数据格式
+            debug!("检查是否为直接深度数据格式: {msg:?}");
+            if msg.get("e").and_then(|e| e.as_str()) == Some("depthUpdate") {
+                debug!("处理直接深度更新数据");
+                Self::process_direct_depth_data(&msg, data_sender).await?;
+            }
+        }
+        
+        Ok(())
+    }
+    
+    /// 处理深度数据
+    async fn process_depth_data(
+        stream: &str,
+        data: &Value,
+        data_sender: &Option<mpsc::UnboundedSender<MarketDataEvent>>,
+    ) -> Result<()> {
+        if let Some(sender) = data_sender {
+            // 解析交易对名称
+            let symbol = stream.split('@').next().unwrap_or("").to_uppercase();
+            
+            // 解析买单和卖单
+            let empty_vec = vec![];
+            let bids = data.get("b").and_then(|b| b.as_array()).unwrap_or(&empty_vec);
+            let asks = data.get("a").and_then(|a| a.as_array()).unwrap_or(&empty_vec);
+            
+            let mut depth_bids = Vec::new();
+            let mut depth_asks = Vec::new();
+            
+            // 解析买单
+            for bid in bids {
+                if let Some(bid_array) = bid.as_array() {
+                    if bid_array.len() >= 2 {
+                        let price = bid_array[0].as_str().unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+                        let quantity = bid_array[1].as_str().unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+                        depth_bids.push(PriceLevel { price, quantity });
+                    }
+                }
+            }
+            
+            // 解析卖单
+            for ask in asks {
+                if let Some(ask_array) = ask.as_array() {
+                    if ask_array.len() >= 2 {
+                        let price = ask_array[0].as_str().unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+                        let quantity = ask_array[1].as_str().unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+                        depth_asks.push(PriceLevel { price, quantity });
+                    }
+                }
+            }
+            
+            // 获取最佳买卖价
+            let best_bid_price = depth_bids.first().map(|b| b.price).unwrap_or(0.0);
+            let best_ask_price = depth_asks.first().map(|a| a.price).unwrap_or(0.0);
+            
+            let depth_update = DepthUpdate {
+                symbol,
+                first_update_id: 0, // TODO: 从实际数据中获取
+                final_update_id: 0, // TODO: 从实际数据中获取
+                event_time: Utc::now().timestamp_millis(),
+                best_bid_price,
+                best_ask_price,
+                depth_bids,
+                depth_asks,
+            };
+            
+            let market_event = MarketDataEvent::DepthUpdate(depth_update);
+            
+            if let Err(e) = sender.send(market_event) {
+                error!("发送深度数据失败: {e:?}");
+            }
+        }
+        
+        Ok(())
+    }
+    
+    /// 处理直接深度数据格式
+    async fn process_direct_depth_data(
+        data: &Value,
+        data_sender: &Option<mpsc::UnboundedSender<MarketDataEvent>>,
+    ) -> Result<()> {
+        if let Some(sender) = data_sender {
+            // 解析交易对名称
+            let symbol = data.get("s").and_then(|s| s.as_str()).unwrap_or("").to_string();
+            
+            // 解析买单和卖单
+            let empty_vec = vec![];
+            let bids = data.get("b").and_then(|b| b.as_array()).unwrap_or(&empty_vec);
+            let asks = data.get("a").and_then(|a| a.as_array()).unwrap_or(&empty_vec);
+            
+            let mut depth_bids = Vec::new();
+            let mut depth_asks = Vec::new();
+            
+            // 解析买单
+            for bid in bids {
+                if let Some(bid_array) = bid.as_array() {
+                    if bid_array.len() >= 2 {
+                        let price = bid_array[0].as_str().unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+                        let quantity = bid_array[1].as_str().unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+                        depth_bids.push(PriceLevel { price, quantity });
+                    }
+                }
+            }
+            
+            // 解析卖单
+            for ask in asks {
+                if let Some(ask_array) = ask.as_array() {
+                    if ask_array.len() >= 2 {
+                        let price = ask_array[0].as_str().unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+                        let quantity = ask_array[1].as_str().unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+                        depth_asks.push(PriceLevel { price, quantity });
+                    }
+                }
+            }
+            
+            // 获取最佳买卖价
+            let best_bid_price = depth_bids.first().map(|b| b.price).unwrap_or(0.0);
+            let best_ask_price = depth_asks.first().map(|a| a.price).unwrap_or(0.0);
+            
+            let first_update_id = data.get("U").and_then(|u| u.as_i64()).unwrap_or(0);
+            let final_update_id = data.get("u").and_then(|u| u.as_i64()).unwrap_or(0);
+            let event_time = data.get("E").and_then(|e| e.as_i64()).unwrap_or(Utc::now().timestamp_millis());
+            
+            // 在移动之前保存长度信息
+            let bids_len = depth_bids.len();
+            let asks_len = depth_asks.len();
+            
+            let depth_update = DepthUpdate {
+                symbol,
+                first_update_id,
+                final_update_id,
+                event_time,
+                best_bid_price,
+                best_ask_price,
+                depth_bids,
+                depth_asks,
+            };
+            
+            let market_event = MarketDataEvent::DepthUpdate(depth_update);
+            
+            if let Err(e) = sender.send(market_event) {
+                error!("发送深度数据失败: {e:?}");
+            } else {
+                debug!("成功发送深度数据: {bids_len} bids, {asks_len} asks");
+            }
+        }
+        
+        Ok(())
+    }
+}

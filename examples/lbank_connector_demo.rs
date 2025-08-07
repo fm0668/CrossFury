@@ -7,7 +7,10 @@ use trifury::{
         lbank::LBankConnector,
     },
     core::AppState,
-    types::config::{ConnectorConfig, SubscriptionConfig, DataType, UpdateSpeed},
+    types::{
+        config::{ConnectorConfig, SubscriptionConfig, UpdateSpeed},
+        common::DataType,
+    },
 };
 use std::{sync::Arc, time::Duration};
 use tokio::time::{sleep, timeout};
@@ -46,14 +49,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match connector.connect_websocket().await {
         Ok(_) => info!("✅ 成功连接到LBank交易所"),
         Err(e) => {
-            error!("❌ 连接失败: {}", e);
+            error!("❌ 连接失败: {e}");
             return Err(e.into());
         }
     }
     
     // 检查连接状态
-    let status = connector.get_connection_status();
-    info!("🔗 连接状态: {:?}", status);
+    let status = connector.get_connection_status().await;
+    info!("🔗 连接状态: {status:?}");
     
     // 创建订阅配置
     let subscription = SubscriptionConfig {
@@ -62,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "ETHUSDT".to_string(),
             "BNBUSDT".to_string(),
         ],
-        data_types: vec![DataType::OrderBook, DataType::Trades],
+        data_types: vec![DataType::OrderBook, DataType::Trade],
         depth_levels: Some(10),
         update_speed: Some(UpdateSpeed::Fast),
     };
@@ -78,7 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match subscribe_result {
         Ok(Ok(_)) => info!("✅ 成功订阅市场数据"),
         Ok(Err(e)) => {
-            warn!("⚠️ 订阅失败: {}", e);
+            warn!("⚠️ 订阅失败: {e}");
             // 继续运行，可能是网络问题
         },
         Err(_) => {
@@ -99,8 +102,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
     
     for symbol in symbols_to_check {
-        if let Some(orderbook) = connector.get_orderbook_snapshot(symbol) {
-            info!("📈 {} 订单簿数据:", symbol);
+        if let Some(orderbook) = connector.get_orderbook_snapshot(symbol).await {
+            info!("📈 {symbol} 订单簿数据:");
             info!("   最佳买价: {:.8}", orderbook.best_bid);
             info!("   最佳卖价: {:.8}", orderbook.best_ask);
             info!("   价差: {:.8}", orderbook.best_ask - orderbook.best_bid);
@@ -124,7 +127,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         } else {
-            warn!("⚠️ 无法获取 {} 的订单簿数据", symbol);
+            warn!("⚠️ 无法获取 {symbol} 的订单簿数据");
         }
     }
     
@@ -132,11 +135,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match connector.get_connection_stats().await {
         Ok((messages, updates, uptime)) => {
             info!("📊 连接统计:");
-            info!("   WebSocket消息数: {}", messages);
-            info!("   价格更新数: {}", updates);
-            info!("   运行时间: {:.2}秒", uptime);
+            info!("   WebSocket消息数: {messages}");
+            info!("   价格更新数: {updates}");
+            info!("   运行时间: {uptime:.2}秒");
         },
-        Err(e) => warn!("⚠️ 无法获取连接统计: {}", e),
+        Err(e) => warn!("⚠️ 无法获取连接统计: {e}"),
     }
     
     // 健康检查
@@ -148,7 +151,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 warn!("💛 连接健康状态: 异常");
             }
         },
-        Err(e) => error!("❌ 健康检查失败: {}", e),
+        Err(e) => error!("❌ 健康检查失败: {e}"),
     }
     
     // 测试交易功能（应该返回未实现错误）
@@ -164,25 +167,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         order_type: OrderType::Market,
         quantity: 0.001,
         price: None,
-        time_in_force: TimeInForce::IOC,
+        time_in_force: Some(TimeInForce::IOC),
         client_order_id: Some("demo_order".to_string()),
+        reduce_only: Some(false),
+        close_position: Some(false),
+        position_side: Some(trifury::types::orders::PositionSide::Both),
     };
     
     match connector.place_order(&test_order).await {
         Ok(_) => warn!("⚠️ 意外成功: 交易功能不应该被实现"),
-        Err(e) => info!("✅ 预期错误: {}", e),
+        Err(e) => info!("✅ 预期错误: {e}"),
     }
     
     // 断开连接
     info!("🔌 断开连接...");
     match connector.disconnect_websocket().await {
         Ok(_) => info!("✅ 成功断开连接"),
-        Err(e) => error!("❌ 断开连接失败: {}", e),
+        Err(e) => error!("❌ 断开连接失败: {e}"),
     }
     
     // 最终状态检查
-    let final_status = connector.get_connection_status();
-    info!("🏁 最终连接状态: {:?}", final_status);
+    let final_status = connector.get_connection_status().await;
+    info!("🏁 最终连接状态: {final_status:?}");
     
     info!("🎉 LBank连接器演示程序完成");
     

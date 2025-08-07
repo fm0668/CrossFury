@@ -14,6 +14,7 @@ pub enum ExchangeType {
     Hbit,
     Batonex,
     CoinCatch,
+    Binance,
     // 期货交易所
     BinanceFutures,
     BybitFutures,
@@ -30,6 +31,7 @@ impl fmt::Display for ExchangeType {
             ExchangeType::Hbit => write!(f, "HBIT"),
             ExchangeType::Batonex => write!(f, "BATONEX"),
             ExchangeType::CoinCatch => write!(f, "COINCATCH"),
+            ExchangeType::Binance => write!(f, "BINANCE"),
             ExchangeType::BinanceFutures => write!(f, "BINANCE_FUTURES"),
             ExchangeType::BybitFutures => write!(f, "BYBIT_FUTURES"),
             ExchangeType::OkxFutures => write!(f, "OKX_FUTURES"),
@@ -64,6 +66,7 @@ impl From<crate::exchange_types::Exchange> for ExchangeType {
             crate::exchange_types::Exchange::Hbit => ExchangeType::Hbit,
             crate::exchange_types::Exchange::Batonex => ExchangeType::Batonex,
             crate::exchange_types::Exchange::CoinCatch => ExchangeType::CoinCatch,
+            crate::exchange_types::Exchange::Binance => ExchangeType::Binance,
             crate::exchange_types::Exchange::BinanceFutures => ExchangeType::BinanceFutures,
             crate::exchange_types::Exchange::BybitFutures => ExchangeType::BybitFutures,
             crate::exchange_types::Exchange::OkxFutures => ExchangeType::OkxFutures,
@@ -81,6 +84,7 @@ impl From<ExchangeType> for crate::exchange_types::Exchange {
             ExchangeType::Hbit => crate::exchange_types::Exchange::Hbit,
             ExchangeType::Batonex => crate::exchange_types::Exchange::Batonex,
             ExchangeType::CoinCatch => crate::exchange_types::Exchange::CoinCatch,
+            ExchangeType::Binance => crate::exchange_types::Exchange::Binance,
             ExchangeType::BinanceFutures => crate::exchange_types::Exchange::BinanceFutures,
             ExchangeType::BybitFutures => crate::exchange_types::Exchange::BybitFutures,
             ExchangeType::OkxFutures => crate::exchange_types::Exchange::OkxFutures,
@@ -94,7 +98,7 @@ impl ExchangeType {
         match self {
             ExchangeType::Phemex | ExchangeType::LBank | ExchangeType::XtCom 
             | ExchangeType::TapBit | ExchangeType::Hbit | ExchangeType::Batonex 
-            | ExchangeType::CoinCatch => MarketType::Spot,
+            | ExchangeType::CoinCatch | ExchangeType::Binance => MarketType::Spot,
             ExchangeType::BinanceFutures | ExchangeType::BybitFutures 
             | ExchangeType::OkxFutures => MarketType::Futures,
         }

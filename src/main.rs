@@ -21,24 +21,13 @@ use trifury::json_parser::init_simd_json;
 // Import required components from our crate
 use trifury::{
     AppState, OrderbookUpdate,
-    get_perpetual_products,
-    distribute_symbols, websocket_handler,
-    lbank_websocket_handler, xtcom_websocket_handler,
-    tapbit_websocket_handler, hbit_websocket_handler,
-    batonex_websocket_handler,
-    coincatch_websocket_handler,
-    run_connection_health_manager,
     run_clean_metrics_display,
-
     flush_cross_ex_buffer,
-
 };
-use trifury::network::{
-    binance_futures_websocket::binance_futures_websocket_handler,
-    bybit_futures_websocket::bybit_futures_websocket_handler,
-    okx_futures_websocket::okx_futures_websocket_handler,
-    api_client::get_futures_symbols,
-};
+// 注意：原 network 模块已移除，期货 WebSocket 处理器将在重构完成后提供
+// use trifury::connectors::binance::futures::BinanceFuturesConnector;
+// use trifury::connectors::bybit::futures::BybitFuturesConnector;
+// use trifury::connectors::okx::futures::OkxFuturesConnector;
 use trifury::config::{Config, init_config, get_config};
 use trifury::error_handling::{init_error_tracker, record_error};
 
@@ -64,16 +53,11 @@ fn build_exchange_fees_from_config() -> std::collections::HashMap<trifury::excha
     }
     
     // Ensure we have fallbacks for any missing exchanges
-    if !fees.contains_key(&trifury::exchange_types::Exchange::Phemex) {
-        fees.insert(
-            trifury::exchange_types::Exchange::Phemex,
-            trifury::exchange_types::ExchangeFees::new(
+    fees.entry(trifury::exchange_types::Exchange::Phemex).or_insert_with(|| trifury::exchange_types::ExchangeFees::new(
                 trifury::exchange_types::Exchange::Phemex,
                 0.001, // 0.1% maker
                 0.0006 // 0.06% taker
-            )
-        );
-    }
+            ));
     
     // Add other exchanges as needed...
     
@@ -86,7 +70,7 @@ fn simple_distribute_symbols(symbols: Vec<String>, max_connections: usize) -> Ve
         return vec![];
     }
 
-    let chunk_size = (symbols.len() + max_connections - 1) / max_connections; // Ceiling division
+    let chunk_size = symbols.len().div_ceil(max_connections); // Ceiling division
     symbols.chunks(chunk_size)
         .map(|chunk| chunk.to_vec())
         .collect()
@@ -95,10 +79,10 @@ fn simple_distribute_symbols(symbols: Vec<String>, max_connections: usize) -> Ve
 #[tokio::main]
 async fn main() -> Result<(), AppError> {
     // Load configuration from file
-    match init_config("config.toml") {
+    match init_config("config.toml").await {
         Ok(_) => info!("Configuration loaded successfully"),
         Err(e) => {
-            eprintln!("Error loading configuration: {}", e);
+            eprintln!("Error loading configuration: {e}");
             eprintln!("Falling back to default configuration");
             
             // Create a basic default config
@@ -124,10 +108,11 @@ async fn main() -> Result<(), AppError> {
         .filter_module("trifury::xtcom_websocket", LevelFilter::Warn)
         .filter_module("trifury::lbank_websocket", LevelFilter::Warn)
         .filter_module("trifury::websocket", LevelFilter::Warn)
-        .filter_module("trifury::network::tapbit_websocket", LevelFilter::Warn)
-        .filter_module("trifury::network::hbit_websocket", LevelFilter::Warn)
-        .filter_module("trifury::network::batonex_websocket", LevelFilter::Warn)
-        .filter_module("trifury::network::coincatch_websocket", LevelFilter::Warn)
+        // 注意：原 network 模块日志过滤器已移除
+        // .filter_module("trifury::connectors::tapbit", LevelFilter::Warn)
+        // .filter_module("trifury::connectors::hbit", LevelFilter::Warn)
+        // .filter_module("trifury::connectors::batonex", LevelFilter::Warn)
+        // .filter_module("trifury::connectors::coincatch", LevelFilter::Warn)
         .format(|buf, record| {
             // Use a more minimal format for regular logs to prevent terminal spam
             if record.level() <= log::Level::Info {
@@ -170,7 +155,7 @@ async fn main() -> Result<(), AppError> {
     let num_cores = num_cpus::get();
     let num_worker_threads = num_cores.min(get_config().general.worker_threads); 
     
-    info!("Starting {} parallel orderbook processor workers", num_worker_threads);
+    info!("Starting {num_worker_threads} parallel orderbook processor workers");
     
     // Implement a fast path for single worker or multiple workers based on core count
     if num_worker_threads == 1 {
@@ -228,7 +213,7 @@ async fn main() -> Result<(), AppError> {
                             
                             // Yield less frequently
                             if processed_count % 10000 == 0 {
-                                debug!("Processed {} orderbook updates (single worker mode)", processed_count);
+                                debug!("Processed {processed_count} orderbook updates (single worker mode)");
                                 tokio::task::yield_now().await;
                             }
                         }
@@ -250,7 +235,7 @@ async fn main() -> Result<(), AppError> {
             let mut rx = orderbook_rx;
             while let Some(update) = rx.recv().await {
                 if let Err(e) = worker_tx_clone.send(update) {
-                    error!("Worker channel closed, stopping forwarder: {}", e);
+                    error!("Worker channel closed, stopping forwarder: {e}");
                     break;
                 }
             }
@@ -263,7 +248,7 @@ async fn main() -> Result<(), AppError> {
             let mut worker_rx = worker_tx.subscribe();  // Each worker gets a new subscription
             
             tokio::spawn(async move {
-                info!("Starting orderbook processor worker {}", worker_id);
+                info!("Starting orderbook processor worker {worker_id}");
                 
                 let mut processed_count = 0;
                 let mut batch = Vec::with_capacity(1000); // Increased batch size
@@ -273,7 +258,7 @@ async fn main() -> Result<(), AppError> {
                     batch.push(update);
                     
                     // Process batch when it reaches sufficient size or when queue is empty
-                    if batch.len() >= 1000 || worker_rx.len() == 0 {
+                    if batch.len() >= 1000 || worker_rx.is_empty() {
                         for update in &batch {
                             // Ensure the symbol has an exchange prefix
                             let symbol = &update.symbol;
@@ -310,13 +295,13 @@ async fn main() -> Result<(), AppError> {
                         
                         // Yield less frequently
                         if processed_count % 20000 == 0 {
-                            debug!("Worker {}: processed {} updates", worker_id, processed_count);
+                            debug!("Worker {worker_id}: processed {processed_count} updates");
                             tokio::task::yield_now().await;
                         }
                     }
                 }
                 
-                error!("Orderbook processor worker {} channel closed unexpectedly", worker_id);
+                error!("Orderbook processor worker {worker_id} channel closed unexpectedly");
             });
         }
     }
@@ -324,11 +309,13 @@ async fn main() -> Result<(), AppError> {
     // Build exchange fees table
     let exchange_fees = build_exchange_fees_from_config();
 
+    // 注意：产品数据获取已移除，等待重构完成
+    /*
     // Get perpetual products
     let perpetual_products = match get_perpetual_products(&app_state).await {
         Ok(products) => products,
         Err(e) => {
-            error!("Failed to get perpetual product data: {}", e);
+            error!("Failed to get perpetual product data: {e}");
             record_error(trifury::exchange_types::Exchange::Phemex, None, &e);
             return Err(e);
         }
@@ -349,7 +336,7 @@ async fn main() -> Result<(), AppError> {
     let mut coincatch_symbols = Vec::new();
     
     // Extract symbols from perpetual products for each exchange
-    for (symbol, _) in &perpetual_products {
+    for symbol in perpetual_products.keys() {
         // Add to Phemex symbols (original exchange)
         phemex_symbols.push((symbol.clone(), "perpetual".to_string()));
         
@@ -384,6 +371,9 @@ async fn main() -> Result<(), AppError> {
     let hbit_chunks = distribute_even_chunks(&hbit_symbols, max_ws_connections / 10, 10); // Max 10 per connection
     let batonex_chunks = distribute_even_chunks(&batonex_symbols, max_ws_connections / 10, 10); // Max 10 per connection
     let coincatch_chunks = distribute_even_chunks(&coincatch_symbols, max_ws_connections / 10, 10); // Max 10 per connection
+    */
+    
+    info!("WebSocket连接器已暂时禁用，等待重构完成");
 
     // Mark initialization as complete
     *app_state.is_initializing.write().await = false;
@@ -413,6 +403,8 @@ async fn main() -> Result<(), AppError> {
     let mut scanner_tasks = Vec::new();
 
     // Launch Phemex WebSocket connections
+    // 注意：WebSocket处理器已移除，等待重构完成
+    /*
     info!("Starting Phemex WebSocket connections");
     for (i, chunk) in phemex_symbol_chunks.into_iter().enumerate() {
         let state_clone = app_state.clone();
@@ -426,7 +418,10 @@ async fn main() -> Result<(), AppError> {
         
         websocket_tasks.push(task);
     }
+    */
     
+    // 注意：所有WebSocket处理器已移除，等待重构完成
+    /*
     // Launch LBANK WebSocket connections
     info!("Starting LBANK WebSocket connections");
     for (i, chunk) in lbank_chunks.into_iter().enumerate() {
@@ -517,7 +512,11 @@ async fn main() -> Result<(), AppError> {
 
         websocket_tasks.push(task);
     }
+    */
 
+    // 注意：期货 WebSocket 连接已暂时禁用，等待重构完成
+    // TODO: 使用重构后的连接器系统重新实现期货连接
+    /*
     // Start futures WebSocket connections
     info!("Starting futures WebSocket connections...");
 
@@ -525,7 +524,7 @@ async fn main() -> Result<(), AppError> {
     let futures_symbols = match get_futures_symbols().await {
         Ok(symbols) => symbols,
         Err(e) => {
-            error!("Failed to get futures symbols: {}", e);
+            error!("Failed to get futures symbols: {e}");
             std::collections::HashMap::new()
         }
     };
@@ -571,13 +570,17 @@ async fn main() -> Result<(), AppError> {
             websocket_tasks.push(task);
         }
     }
+    */
         
     // Start a connection health manager
+    // 注意：连接健康管理器已移除，等待重构完成
+    /*
     let health_state = app_state.clone();
     let health_task = websocket_runtime_handle.spawn(async move {
         run_connection_health_manager(health_state).await;
     });
     websocket_tasks.push(health_task);
+    */
 
     // Allow time for connections to initialize
     tokio::time::sleep(Duration::from_secs(2)).await;
@@ -602,7 +605,7 @@ async fn main() -> Result<(), AppError> {
             
             // Flush standard cross-exchange opportunities
             if let Err(e) = flush_cross_ex_buffer("cross_exchange_arb.csv").await {
-                error!("Error flushing cross-exchange buffer: {}", e);
+                error!("Error flushing cross-exchange buffer: {e}");
             }
             
             // Flush multi-hop opportunities if feature is enabled
@@ -649,7 +652,7 @@ async fn main() -> Result<(), AppError> {
                     
                     // Each scanner takes a different subset
                     if !all_symbols_vec.is_empty() {
-                        let chunk_size = (all_symbols_vec.len() + total_scanners - 1) / total_scanners;
+                        let chunk_size = all_symbols_vec.len().div_ceil(total_scanners);
                         let start = i * chunk_size;
                         let end = std::cmp::min(start + chunk_size, all_symbols_vec.len());
                         
@@ -674,7 +677,7 @@ async fn main() -> Result<(), AppError> {
                     &state_clone,
                     &fees_clone,
                     &cached_symbols
-                );
+                ).await;
                 
                 // Handle profitable opportunities
                 if !opportunities.is_empty() {
@@ -689,8 +692,7 @@ async fn main() -> Result<(), AppError> {
                         state_clone.increment_profitable_opportunities(profitable_count as u64);
                         
                         // Only log if we found significant opportunities
-                        info!("Scanner {}: Found {} cross-exchange opportunities above {:.2}% threshold", 
-                            i, profitable_count, min_profit);
+                        info!("Scanner {i}: Found {profitable_count} cross-exchange opportunities above {min_profit:.2}% threshold");
                     }
                     
                     // Log top 3 opportunities
@@ -712,7 +714,7 @@ async fn main() -> Result<(), AppError> {
                         );
                         
                         // Buffer the opportunity for CSV logging
-                        buffer_cross_exchange_opportunity(opportunity.clone());
+                        let _ = buffer_cross_exchange_opportunity(opportunity.clone()).await;
                     }
                 }
                 
@@ -731,8 +733,7 @@ async fn main() -> Result<(), AppError> {
                             .count();
                         
                         if profitable_count > 0 {
-                            info!("Scanner {}: Found {} multi-hop arbitrage opportunities above {:.2}% threshold", 
-                                i, profitable_count, min_profit);
+                            info!("Scanner {i}: Found {profitable_count} multi-hop arbitrage opportunities above {min_profit:.2}% threshold");
                             
                             // Log top 3 multi-hop opportunities
                             for (j, opportunity) in multi_hop_opps.iter()
@@ -748,7 +749,7 @@ async fn main() -> Result<(), AppError> {
                                 );
                                 
                                 // Buffer the opportunity for CSV logging
-                                buffer_multi_hop_opportunity(opportunity.clone());
+                                let _ = buffer_multi_hop_opportunity(opportunity.clone()).await;
                             }
                         }
                     }
@@ -773,7 +774,7 @@ async fn main() -> Result<(), AppError> {
 
     // Wait for metrics display to finish
     if let Err(e) = metrics_display.await {
-        error!("Error in metrics display thread: {}", e);
+        error!("Error in metrics display thread: {e}");
     }
 
     // Cleanly shut down scanner runtime
@@ -801,10 +802,10 @@ async fn main() -> Result<(), AppError> {
         }
         
         // Calculate optimal chunk size with maximum limit
-        let symbols_per_chunk = ((symbols.len() + num_chunks - 1) / num_chunks).min(max_per_chunk);
+        let symbols_per_chunk = symbols.len().div_ceil(num_chunks).min(max_per_chunk);
         
         // If we need more chunks due to max_per_chunk, recalculate
-        let actual_chunks_needed = (symbols.len() + symbols_per_chunk - 1) / symbols_per_chunk;
+        let actual_chunks_needed = symbols.len().div_ceil(symbols_per_chunk);
         
         let mut result = Vec::new();
         

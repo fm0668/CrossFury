@@ -60,14 +60,14 @@ pub const PERP_PRODUCTS_CACHE_FILE: &str = "phemex_perp_products_cache.json";
 
 // Timeouts
 pub const INITIAL_TIMEOUT: Duration = Duration::from_secs(10); // Longer timeout for initial product fetch
-pub const WEBSOCKET_TIMEOUT: Duration = Duration::from_secs(5); // Shorter timeout for WebSocket messages
+pub const WEBSOCKET_TIMEOUT: Duration = Duration::from_secs(3); // Reduced timeout for faster response
 
 // In core.rs, add this constant back:
 pub const SYMBOL_TYPE_PERPETUAL: &str = "perpetual";
 
 // Connection stale detection settings
-pub const STALE_CONNECTION_TIMEOUT: i64 = 30000; // 30 seconds (increased from 20)
-pub const FORCE_RECONNECT_TIMEOUT: i64 = 45000; // 45 seconds of complete silence
+pub const STALE_CONNECTION_TIMEOUT: i64 = 10000; // 10 seconds - reduced for faster detection
+pub const FORCE_RECONNECT_TIMEOUT: i64 = 15000; // 15 seconds - reduced for faster recovery
 
 // OrderbookUpdate
 #[derive(Debug, Clone)]
@@ -141,8 +141,17 @@ pub struct AppState {
     // Message queue for orderbook updates
     pub orderbook_queue: Option<mpsc::UnboundedSender<OrderbookUpdate>>,
     
+    // Message queue for depth updates
+    pub depth_queue: Option<mpsc::UnboundedSender<crate::types::DepthUpdate>>,
+    
     // Reconnection signals for connections
     pub reconnect_signals: Arc<DashMap<String, bool>>, // Connection ID -> should reconnect flag
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AppState {
@@ -170,6 +179,9 @@ impl AppState {
             
             // Initialize message queue as None (will be set in main)
             orderbook_queue: None,
+            
+            // Initialize depth queue as None (will be set in main)
+            depth_queue: None,
             
             // Initialize reconnection signals
             reconnect_signals: Arc::new(DashMap::new()),
@@ -218,11 +230,7 @@ impl AppState {
         
         if let Some(timestamp) = self.connection_timestamps.get(connection_id) {
             let last_time = timestamp.value().load(Ordering::SeqCst);
-            if current_time > last_time {
-                current_time - last_time
-            } else {
-                0 // Clock skew protection
-            }
+            current_time.saturating_sub(last_time)
         } else {
             STALE_CONNECTION_TIMEOUT as u64 + 1 // No record means it's been idle since the beginning
         }
@@ -234,11 +242,7 @@ impl AppState {
         let current_time = chrono::Utc::now().timestamp_millis() as u64;
         let last_time = self.last_check_time.load(Ordering::SeqCst);
         
-        if current_time > last_time {
-            current_time - last_time
-        } else {
-            0 // Clock skew protection
-        }
+        current_time.saturating_sub(last_time)
     }
     
     /// Mark a connection as unhealthy
@@ -415,6 +419,15 @@ pub enum AppError {
     
     #[error("Connection error: {0}")]
     ConnectionError(String),
+    
+    #[error("Configuration error: {0}")]
+    ConfigError(String),
+    
+    #[error("Cryptographic error: {0}")]
+    CryptoError(String),
+    
+    #[error("Risk management error: {0}")]
+    RiskError(String),
     
     #[error("Other error: {0}")]
     Other(String),

@@ -17,6 +17,12 @@ pub struct MetricsTracker {
     last_report_time: Instant,
 }
 
+impl Default for MetricsTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MetricsTracker {
     pub fn new() -> Self {
         Self {
@@ -43,7 +49,7 @@ impl MetricsTracker {
         if rate >= 1000.0 {
             format!("{:.1}k/sec", rate / 1000.0)
         } else {
-            format!("{:.1}/sec", rate)
+            format!("{rate:.1}/sec")
         }
     }
 }
@@ -158,7 +164,7 @@ pub async fn run_clean_metrics_display(app_state: AppState) {
         
         println!("- {}: {} ms ({})", 
                 "Last WebSocket Activity".bold(), 
-                global_idle_time.to_string(), 
+                global_idle_time, 
                 if status_color == "green" { 
                     "HEALTHY".green().bold() 
                 } else if status_color == "yellow" { 
@@ -187,7 +193,7 @@ pub async fn run_clean_metrics_display(app_state: AppState) {
         
         // Force flush stdout to ensure display updates
         if let Err(e) = io::stdout().flush() {
-            eprintln!("Error flushing stdout: {}", e);
+            eprintln!("Error flushing stdout: {e}");
         }
         
         // Make sure to yield to other tasks

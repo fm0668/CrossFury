@@ -123,19 +123,9 @@ impl Default for SystemConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubscriptionConfig {
     pub symbols: Vec<String>,
-    pub data_types: Vec<DataType>,
+    pub data_types: Vec<crate::types::common::DataType>,
     pub depth_levels: Option<u32>, // 订单簿深度
     pub update_speed: Option<UpdateSpeed>,
-}
-
-/// 数据类型
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum DataType {
-    OrderBook,
-    Trades,
-    Ticker,
-    Kline,
-    UserData,
 }
 
 /// 更新速度
@@ -146,3 +136,176 @@ pub enum UpdateSpeed {
     Fast,    // 10ms
     Realtime, // 实时
 }
+
+/// 健康状态
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HealthStatus {
+    Healthy,
+    Degraded,
+    Unhealthy,
+}
+
+impl std::fmt::Display for HealthStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            HealthStatus::Healthy => write!(f, "HEALTHY"),
+            HealthStatus::Degraded => write!(f, "DEGRADED"),
+            HealthStatus::Unhealthy => write!(f, "UNHEALTHY"),
+        }
+    }
+}
+
+/// 连接统计信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
+pub struct ConnectionStats {
+    pub connected_since: Option<chrono::DateTime<chrono::Utc>>,
+    pub messages_received: u64,
+    pub messages_sent: u64,
+    pub reconnect_count: u32,
+    pub last_ping_time: Option<chrono::DateTime<chrono::Utc>>,
+    pub latency_ms: Option<f64>,
+}
+
+/// 连接质量信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConnectionQuality {
+    pub latency_ms: f64,
+    pub packet_loss_rate: f64,
+    pub stability_score: f64, // 0.0 - 1.0
+    pub last_updated: chrono::DateTime<chrono::Utc>,
+}
+
+impl Default for ConnectionQuality {
+    fn default() -> Self {
+        Self {
+            latency_ms: 0.0,
+            packet_loss_rate: 0.0,
+            stability_score: 1.0,
+            last_updated: chrono::Utc::now(),
+        }
+    }
+}
+
+/// 连接质量等级
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ConnectionQualityLevel {
+    Excellent,
+    Good,
+    Fair,
+    Poor,
+}
+
+impl ConnectionQuality {
+    /// 评估连接质量等级
+    pub fn assess_quality(&self) -> ConnectionQualityLevel {
+        if self.latency_ms > 1000.0 || self.packet_loss_rate > 0.1 || self.stability_score < 0.3 {
+            ConnectionQualityLevel::Poor
+        } else if self.latency_ms > 500.0 || self.packet_loss_rate > 0.05 || self.stability_score < 0.7 {
+            ConnectionQualityLevel::Fair
+        } else if self.latency_ms > 200.0 || self.packet_loss_rate > 0.01 || self.stability_score < 0.9 {
+            ConnectionQualityLevel::Good
+        } else {
+            ConnectionQualityLevel::Excellent
+        }
+    }
+    
+    /// 检查连接质量是否较差
+    pub fn is_poor(&self) -> bool {
+        matches!(self.assess_quality(), ConnectionQualityLevel::Poor)
+    }
+}
+
+/// 订阅状态
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SubscriptionStatus {
+    Pending,
+    Subscribing,
+    Active,
+    Failed(String),
+    Retrying(u32),
+}
+
+impl std::fmt::Display for SubscriptionStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            SubscriptionStatus::Pending => write!(f, "PENDING"),
+            SubscriptionStatus::Subscribing => write!(f, "SUBSCRIBING"),
+            SubscriptionStatus::Active => write!(f, "ACTIVE"),
+            SubscriptionStatus::Failed(reason) => write!(f, "FAILED: {}", reason),
+            SubscriptionStatus::Retrying(count) => write!(f, "RETRYING({})", count),
+        }
+    }
+}
+
+/// 单个订阅结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubscriptionResult {
+    pub symbol: String,
+    pub data_type: crate::types::common::DataType,
+    pub status: SubscriptionStatus,
+    pub error: Option<String>,
+}
+
+/// 批量订阅结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchSubscriptionResult {
+    pub total_requested: usize,
+    pub successful: usize,
+    pub failed: usize,
+    pub pending: usize,
+    pub failed_symbols: Vec<(String, String)>, // (symbol, reason)
+    pub results: Vec<SubscriptionResult>,
+}
+
+impl Default for BatchSubscriptionResult {
+    fn default() -> Self {
+        Self {
+            total_requested: 0,
+            successful: 0,
+            failed: 0,
+            pending: 0,
+            failed_symbols: Vec::new(),
+            results: Vec::new(),
+        }
+    }
+}
+
+/// 高级连接器配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdvancedConnectorConfig {
+    pub base: ConnectorConfig,
+    
+    // 高级连接配置
+    pub emergency_ping_threshold: u32,  // 触发紧急ping的超时次数
+    pub connection_quality_check_interval: u64,  // 连接质量检查间隔
+    pub adaptive_timeout_enabled: bool,  // 是否启用自适应超时
+    
+    // 订阅配置
+    pub subscription_batch_size: usize,  // 批量订阅大小
+    pub subscription_retry_count: u32,   // 订阅重试次数
+    pub symbol_validation_enabled: bool, // 是否启用符号验证
+    
+    // 数据处理配置
+    pub depth_data_validation: bool,     // 深度数据验证
+    pub price_precision_auto_detect: bool, // 自动检测价格精度
+    pub orderbook_sort_validation: bool, // 订单簿排序验证
+}
+
+impl Default for AdvancedConnectorConfig {
+    fn default() -> Self {
+        Self {
+            base: ConnectorConfig::default(),
+            emergency_ping_threshold: 2,
+            connection_quality_check_interval: 30000,
+            adaptive_timeout_enabled: true,
+            subscription_batch_size: 10,
+            subscription_retry_count: 3,
+            symbol_validation_enabled: true,
+            depth_data_validation: true,
+            price_precision_auto_detect: true,
+            orderbook_sort_validation: true,
+        }
+    }
+}
+
