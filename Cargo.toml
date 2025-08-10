@@ -34,6 +34,9 @@ simd-json = "0.11"
 regex = "1.10"
 rust_decimal = "1.33"
 
+[dev-dependencies]
+tempfile = "3.8"
+
 [[bin]]
 name = "binance_data_collector"
 path = "src/bin/binance_data_collector.rs"

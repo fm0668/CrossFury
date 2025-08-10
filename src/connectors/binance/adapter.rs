@@ -210,17 +210,19 @@ impl ExchangeConnector for BinanceAdapter {
         Err(ConnectorError::TradingNotImplemented)
     }
     
-    fn get_market_data_stream(&self) -> mpsc::UnboundedReceiver<StandardizedMessage> {
+    fn get_market_data_stream(&self) -> mpsc::Receiver<StandardizedMessage> {
         // 这里需要返回市场数据流接收器
         // 暂时创建一个空的接收器
-        let (_tx, rx) = mpsc::unbounded_channel();
+        let config_ref = crate::config::get_config();
+        let (_tx, rx) = mpsc::channel(config_ref.data_collector.market_data_channel_buffer);
         rx
     }
     
-    fn get_user_data_stream(&self) -> mpsc::UnboundedReceiver<StandardizedMessage> {
+    fn get_user_data_stream(&self) -> mpsc::Receiver<StandardizedMessage> {
         // 这里需要返回用户数据流接收器
         // 暂时创建一个空的接收器
-        let (_tx, rx) = mpsc::unbounded_channel();
+        let config_ref = crate::config::get_config();
+        let (_tx, rx) = mpsc::channel(config_ref.data_collector.trade_event_channel_buffer);
         rx
     }
     
@@ -355,7 +357,7 @@ impl ExchangeConnector for BinanceAdapter {
 
 #[async_trait]
 impl DataFlowManager for BinanceAdapter {
-    fn take_market_data_receiver(&mut self) -> Option<mpsc::UnboundedReceiver<HighFrequencyData>> {
+    fn take_market_data_receiver(&mut self) -> Option<mpsc::Receiver<HighFrequencyData>> {
         // 暂时返回None，实际实现需要返回高频数据接收器
         None
     }

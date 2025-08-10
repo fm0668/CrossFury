@@ -13,6 +13,7 @@ pub mod json_parser;
 // 新增重构模块
 pub mod types;  // 新的类型系统
 pub mod connectors;  // 新的连接器系统
+pub mod sinks;  // 可插拔数据落地抽象
 
 
 // Re-export key components for easier usage

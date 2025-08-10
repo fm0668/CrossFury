@@ -141,7 +141,7 @@ impl BatchedJsonWriter {
         // 批量写入所有缓冲的记录
         for line in &self.buffer {
             writeln!(self.writer, "{line}")
-                .map_err(|e| AppError::ConfigError(format!("写入文件失败: {e}")))?;
+                .map_err(|e| AppError::ConfigError(format!("写入文件失败: {e}")))?
         }
         
         // 刷写到磁盘
@@ -153,6 +153,7 @@ impl BatchedJsonWriter {
         self.buffer.clear();
         self.last_flush = Instant::now();
         
+        // 降低日志噪声：批量刷写改为debug级别
         debug!("批量刷写完成，写入 {wrote} 条记录");
         Ok(())
     }

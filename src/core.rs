@@ -139,7 +139,7 @@ pub struct AppState {
     pub connection_health: Arc<DashMap<String, bool>>, // Connection ID -> healthy flag
     
     // Message queue for orderbook updates
-    pub orderbook_queue: Option<mpsc::UnboundedSender<OrderbookUpdate>>,
+    pub orderbook_queue: Option<mpsc::Sender<OrderbookUpdate>>,
     
     // Message queue for depth updates
     pub depth_queue: Option<mpsc::UnboundedSender<crate::types::DepthUpdate>>,

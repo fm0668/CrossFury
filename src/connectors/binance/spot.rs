@@ -119,7 +119,7 @@ impl BinanceSpotConnector {
         
         // 发送到订单簿队列
         if let Some(tx) = &self.app_state.orderbook_queue {
-            if let Err(e) = tx.send(orderbook_update) {
+            if let Err(e) = tx.send(orderbook_update).await {
                 error!("[Binance] 发送订单簿更新失败: {e}");
             } else {
                 debug!("[Binance] 订单簿更新已发送: {symbol}");

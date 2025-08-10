@@ -149,7 +149,8 @@ async fn main() -> Result<(), AppError> {
     let mut app_state = AppState::new();
 
     // Set up message queue for orderbook updates
-    let (orderbook_tx, orderbook_rx) = tokio::sync::mpsc::unbounded_channel::<OrderbookUpdate>();
+    let config_ref = get_config();
+    let (orderbook_tx, orderbook_rx) = tokio::sync::mpsc::channel::<OrderbookUpdate>(config_ref.data_collector.market_data_channel_buffer);
     app_state.orderbook_queue = Some(orderbook_tx);
     
     // Get the number of cores for optimal distribution

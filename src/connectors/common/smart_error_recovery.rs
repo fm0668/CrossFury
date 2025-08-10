@@ -745,7 +745,7 @@ impl SmartErrorRecovery {
                     // 检查是否已存在相同模式
                     if !history.patterns.iter().any(|p| p.error_sequence == pattern.error_sequence) {
                         history.patterns.push(pattern);
-                        debug!("[SmartErrorRecovery] 发现新错误模式: {:?}", pattern1);
+                        debug!("[SmartErrorRecovery] 发现新错误模式: {:?}", pattern);
                     }
                 }
             }

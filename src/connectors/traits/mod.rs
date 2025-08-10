@@ -24,8 +24,8 @@ pub trait ExchangeConnector: Send + Sync {
     async fn subscribe_user_stream(&self) -> Result<(), ConnectorError>;
     
     // 推送式数据流接口
-    fn get_market_data_stream(&self) -> mpsc::UnboundedReceiver<StandardizedMessage>;
-    fn get_user_data_stream(&self) -> mpsc::UnboundedReceiver<StandardizedMessage>;
+    fn get_market_data_stream(&self) -> mpsc::Receiver<StandardizedMessage>;
+    fn get_user_data_stream(&self) -> mpsc::Receiver<StandardizedMessage>;
     
     // 本地缓存快照读取
     async fn get_orderbook_snapshot(&self, symbol: &str) -> Option<StandardizedOrderBook>;
@@ -95,7 +95,7 @@ pub trait ExchangeConnector: Send + Sync {
 #[async_trait]
 pub trait DataFlowManager: Send + Sync {
     // 高频数据流管理
-    fn take_market_data_receiver(&mut self) -> Option<mpsc::UnboundedReceiver<HighFrequencyData>>;
+    fn take_market_data_receiver(&mut self) -> Option<mpsc::Receiver<HighFrequencyData>>;
     fn subscribe_events(&self) -> broadcast::Receiver<SystemEvent>;
     fn send_market_data(&self, data: HighFrequencyData) -> Result<(), mpsc::error::SendError<HighFrequencyData>>;
     async fn send_event(&self, event: SystemEvent);

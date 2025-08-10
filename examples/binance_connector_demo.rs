@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", "=".repeat(50));
     
     // 创建应用状态
-    let (orderbook_tx, mut orderbook_rx) = mpsc::unbounded_channel::<OrderbookUpdate>();
+    let (orderbook_tx, mut orderbook_rx) = mpsc::channel::<OrderbookUpdate>(1000);
     let mut app_state = AppState::new();
     app_state.orderbook_queue = Some(orderbook_tx);
     let app_state = Arc::new(app_state);

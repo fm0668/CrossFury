@@ -134,7 +134,7 @@ mod tests {
         let _ = connector.connect_websocket().await;
         
         // 创建消息通道
-        let (sender, _receiver) = mpsc::unbounded_channel::<StandardizedMessage>();
+        let (sender, _receiver) = mpsc::channel::<StandardizedMessage>(1024);
         connector.set_message_sender(sender).await;
         
         // 测试订阅（注意：这个测试可能会尝试真实连接）

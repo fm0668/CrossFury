@@ -65,13 +65,13 @@ pub struct BinanceFuturesConnector {
     
     // ExchangeConnector trait 所需的数据流
     /// 标准化市场数据流发送端
-    standardized_market_sender: Option<mpsc::UnboundedSender<StandardizedMessage>>,
+    standardized_market_sender: Option<mpsc::Sender<StandardizedMessage>>,
     /// 标准化市场数据流接收端
-    standardized_market_receiver: Option<mpsc::UnboundedReceiver<StandardizedMessage>>,
+    standardized_market_receiver: Option<mpsc::Receiver<StandardizedMessage>>,
     /// 标准化用户数据流发送端
-    standardized_user_sender: Option<mpsc::UnboundedSender<StandardizedMessage>>,
+    standardized_user_sender: Option<mpsc::Sender<StandardizedMessage>>,
     /// 标准化用户数据流接收端
-    standardized_user_receiver: Option<mpsc::UnboundedReceiver<StandardizedMessage>>,
+    standardized_user_receiver: Option<mpsc::Receiver<StandardizedMessage>>,
     /// 本地订单簿缓存
     orderbook_cache: Arc<RwLock<HashMap<String, StandardizedOrderBook>>>,
     /// 本地交易数据缓存
@@ -122,9 +122,10 @@ impl BinanceFuturesConnector {
         let rest_client = BinanceFuturesRestClient::new(config.clone());
         let message_parser = BinanceFuturesMessageParser;
         
-        // 创建标准化数据流通道
-        let (market_tx, market_rx) = mpsc::unbounded_channel::<StandardizedMessage>();
-        let (user_tx, user_rx) = mpsc::unbounded_channel::<StandardizedMessage>();
+        // 创建标准化数据流通道 - 使用配置中的缓冲区大小
+        let config_ref = crate::config::get_config();
+        let (market_tx, market_rx) = mpsc::channel::<StandardizedMessage>(config_ref.data_collector.market_data_channel_buffer);
+        let (user_tx, user_rx) = mpsc::channel::<StandardizedMessage>(config_ref.data_collector.trade_event_channel_buffer);
         
         // 初始化高级连接管理组件
         let emergency_ping_manager = EmergencyPingManager::new(5);
@@ -620,15 +621,17 @@ impl ExchangeConnector for BinanceFuturesConnector {
     }
     
     // 推送式数据流接口 - 暂时使用空实现，避免panic
-    fn get_market_data_stream(&self) -> mpsc::UnboundedReceiver<StandardizedMessage> {
+    fn get_market_data_stream(&self) -> mpsc::Receiver<StandardizedMessage> {
         // 创建一个新的通道并返回接收端
-        let (_tx, rx) = mpsc::unbounded_channel();
+        let config_ref = crate::config::get_config();
+        let (_tx, rx) = mpsc::channel(config_ref.data_collector.market_data_channel_buffer);
         rx
     }
     
-    fn get_user_data_stream(&self) -> mpsc::UnboundedReceiver<StandardizedMessage> {
+    fn get_user_data_stream(&self) -> mpsc::Receiver<StandardizedMessage> {
         // 创建一个新的通道并返回接收端
-        let (_tx, rx) = mpsc::unbounded_channel();
+        let config_ref = crate::config::get_config();
+        let (_tx, rx) = mpsc::channel(config_ref.data_collector.trade_event_channel_buffer);
         rx
     }
     

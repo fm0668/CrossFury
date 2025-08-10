@@ -37,8 +37,8 @@ pub struct LBankConnector {
     app_state: Arc<AppState>,
     websocket_handler: LBankWebSocketHandler,
     status: Arc<RwLock<ConnectionStatus>>,
-    market_data_sender: Arc<RwLock<Option<mpsc::UnboundedSender<StandardizedMessage>>>>,
-    user_data_sender: Arc<RwLock<Option<mpsc::UnboundedSender<StandardizedMessage>>>>,
+    market_data_sender: Arc<RwLock<Option<mpsc::Sender<StandardizedMessage>>>>,
+    user_data_sender: Arc<RwLock<Option<mpsc::Sender<StandardizedMessage>>>>,
     event_sender: Arc<RwLock<Option<broadcast::Sender<SystemEvent>>>>,
     // WebSocket优化模块
     emergency_ping_manager: Arc<RwLock<EmergencyPingManager>>,
@@ -49,7 +49,8 @@ pub struct LBankConnector {
 impl LBankConnector {
     /// 创建新的LBank连接器实例
     pub fn new(config: ConnectorConfig, app_state: Arc<AppState>) -> Self {
-        let websocket_handler = LBankWebSocketHandler::new(app_state.clone());
+        let (market_data_sender, _) = tokio::sync::mpsc::channel(1000);
+        let websocket_handler = LBankWebSocketHandler::new(app_state.clone(), market_data_sender);
         
         Self {
             config,
@@ -159,8 +160,9 @@ impl ExchangeConnector for LBankConnector {
     }
     
     // 推送式数据流接口
-    fn get_market_data_stream(&self) -> mpsc::UnboundedReceiver<StandardizedMessage> {
-        let (_sender, receiver) = mpsc::unbounded_channel();
+    fn get_market_data_stream(&self) -> mpsc::Receiver<StandardizedMessage> {
+        let config_ref = crate::config::get_config();
+        let (_sender, receiver) = mpsc::channel(config_ref.data_collector.market_data_channel_buffer);
         
         // 将发送器存储起来，以便后续使用
         tokio::spawn(async move {
@@ -171,8 +173,9 @@ impl ExchangeConnector for LBankConnector {
         receiver
     }
     
-    fn get_user_data_stream(&self) -> mpsc::UnboundedReceiver<StandardizedMessage> {
-        let (_, receiver) = mpsc::unbounded_channel();
+    fn get_user_data_stream(&self) -> mpsc::Receiver<StandardizedMessage> {
+        let config_ref = crate::config::get_config();
+        let (_, receiver) = mpsc::channel(config_ref.data_collector.trade_event_channel_buffer);
         receiver
     }
     
@@ -322,7 +325,7 @@ impl ExchangeConnector for LBankConnector {
 #[async_trait]
 impl DataFlowManager for LBankConnector {
     // 高频数据流管理
-    fn take_market_data_receiver(&mut self) -> Option<mpsc::UnboundedReceiver<HighFrequencyData>> {
+    fn take_market_data_receiver(&mut self) -> Option<mpsc::Receiver<HighFrequencyData>> {
         // 暂不实现高频数据流
         None
     }
@@ -359,7 +362,7 @@ impl LBankConnector {
     }
     
     /// 设置消息发送器
-    pub async fn set_message_sender(&mut self, sender: mpsc::UnboundedSender<StandardizedMessage>) {
+    pub async fn set_message_sender(&mut self, sender: mpsc::Sender<StandardizedMessage>) {
         let mut market_data_sender = self.market_data_sender.write().await;
         *market_data_sender = Some(sender);
     }
