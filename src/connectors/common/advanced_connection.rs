@@ -8,7 +8,7 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio::net::TcpStream;
 use futures_util::sink::SinkExt;
 use futures_util::stream::SplitSink;
-use log::{info, warn, error, debug};
+use log::{info, error, debug};
 use crate::types::{ConnectorError, ConnectionQuality};
 use chrono;
 
@@ -82,9 +82,9 @@ impl EmergencyPingManager {
                 Ok(true)
             },
             Err(e) => {
-                error!("紧急ping发送失败: {}", e);
+                error!("紧急ping发送失败: {e}");
                 self.emergency_ping_active.store(false, Ordering::SeqCst);
-                Err(ConnectorError::NetworkError(format!("紧急ping失败: {}", e)))
+                Err(ConnectorError::NetworkError(format!("紧急ping失败: {e}")))
             }
         }
     }
@@ -98,7 +98,7 @@ impl EmergencyPingManager {
         self.consecutive_timeouts.store(0, Ordering::SeqCst);
         self.emergency_ping_active.store(false, Ordering::SeqCst);
         
-        debug!("收到pong响应，延迟: {:?}", latency);
+        debug!("收到pong响应，延迟: {latency:?}");
         latency
     }
     
@@ -277,11 +277,7 @@ impl AdaptiveTimeoutManager {
             .max(self.min_timeout)
             .min(self.max_timeout);
         
-        let diff = if *current > new_timeout {
-            *current - new_timeout
-        } else {
-            new_timeout - *current
-        };
+        let diff = (*current).abs_diff(new_timeout);
         
         if diff > Duration::from_millis(100) {
             debug!("调整超时时间: {:?} -> {:?}", *current, new_timeout);

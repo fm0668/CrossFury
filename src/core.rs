@@ -390,9 +390,10 @@ pub struct OrderBook {
     pub bids: Vec<[String; 2]>,
 }
 
-/// Error types that can occur in our application
+/// Legacy error types that can occur in our application
+/// 注意：这个错误类型已被弃用，请使用 types::errors::AppError
 #[derive(thiserror::Error, Debug)]
-pub enum AppError {
+pub enum CoreAppError {
     #[error("WebSocket error: {0}")]
     WebSocketError(String),
     

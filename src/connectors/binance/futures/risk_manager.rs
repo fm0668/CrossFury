@@ -2,7 +2,7 @@
 //! 
 //! 实现仓位限制检查、保证金充足性验证、价格偏离保护和紧急停止机制
 
-use crate::core::AppError;
+use crate::types::errors::AppError;
 use crate::connectors::binance::futures::websocket::{FuturesPosition, FuturesBalance};
 use crate::types::OrderRequest;
 use std::collections::HashMap;

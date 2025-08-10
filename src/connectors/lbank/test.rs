@@ -12,7 +12,7 @@ mod tests {
     };
     use tokio::sync::mpsc;
     use std::sync::Arc;
-    use std::time::Duration;
+
     use log::info;
 
     /// 创建测试用的连接器配置
@@ -49,7 +49,7 @@ mod tests {
         let config = create_test_config();
         let app_state = AppState::new();
         
-        let mut connector = LBankConnector::new(config, Arc::new(app_state));
+        let connector = LBankConnector::new(config, Arc::new(app_state));
         
         // 验证连接器创建成功
         let status = connector.get_connection_status().await;

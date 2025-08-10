@@ -1,6 +1,5 @@
 use crate::types::market_data::MarketDataEvent;
-use crate::types::trading::TradeEvent;
-use crate::core::AppError;
+use crate::types::errors::AppError;
 use crate::core::AppState;
 use log::{info, error, debug, warn};
 use std::sync::Arc;
@@ -124,7 +123,7 @@ impl LBankWebSocketHandler {
     /// 订阅市场数据
     pub async fn subscribe(&self, symbols: Vec<String>) -> Result<(), AppError> {
         // 降低日志噪声：订阅信息改为debug级别
-        debug!("订阅LBank符号: {:?}", symbols);
+        debug!("订阅LBank符号: {symbols:?}");
         
         // 在测试环境中，我们不启动真实的WebSocket连接
         // 只是模拟订阅成功

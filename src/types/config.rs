@@ -222,8 +222,10 @@ pub enum SubscriptionStatus {
     Pending,
     Subscribing,
     Active,
+    Paused,
     Failed(String),
     Retrying(u32),
+    Cancelled,
 }
 
 impl std::fmt::Display for SubscriptionStatus {
@@ -232,8 +234,10 @@ impl std::fmt::Display for SubscriptionStatus {
             SubscriptionStatus::Pending => write!(f, "PENDING"),
             SubscriptionStatus::Subscribing => write!(f, "SUBSCRIBING"),
             SubscriptionStatus::Active => write!(f, "ACTIVE"),
-            SubscriptionStatus::Failed(reason) => write!(f, "FAILED: {}", reason),
-            SubscriptionStatus::Retrying(count) => write!(f, "RETRYING({})", count),
+            SubscriptionStatus::Paused => write!(f, "PAUSED"),
+            SubscriptionStatus::Failed(reason) => write!(f, "FAILED: {reason}"),
+            SubscriptionStatus::Retrying(count) => write!(f, "RETRYING({count})"),
+            SubscriptionStatus::Cancelled => write!(f, "CANCELLED"),
         }
     }
 }
@@ -249,6 +253,7 @@ pub struct SubscriptionResult {
 
 /// 批量订阅结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct BatchSubscriptionResult {
     pub total_requested: usize,
     pub successful: usize,
@@ -258,18 +263,6 @@ pub struct BatchSubscriptionResult {
     pub results: Vec<SubscriptionResult>,
 }
 
-impl Default for BatchSubscriptionResult {
-    fn default() -> Self {
-        Self {
-            total_requested: 0,
-            successful: 0,
-            failed: 0,
-            pending: 0,
-            failed_symbols: Vec::new(),
-            results: Vec::new(),
-        }
-    }
-}
 
 /// 高级连接器配置
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -6,7 +6,7 @@ use crate::connectors::binance::futures::config::{BinanceFuturesConfig, Position
 use crate::connectors::binance::futures::constants::*;
 use crate::types::market_data::*;
 use crate::types::trading::*;
-use crate::core::AppError;
+use crate::types::errors::AppError;
 
 // 定义Result类型别名
 pub type Result<T> = std::result::Result<T, AppError>;
@@ -14,13 +14,15 @@ pub type Result<T> = std::result::Result<T, AppError>;
 use tokio_tungstenite::{connect_async, tungstenite::Message, WebSocketStream, MaybeTlsStream};
 use futures_util::{SinkExt, StreamExt, stream::{SplitSink, SplitStream}};
 use tokio::net::TcpStream;
+
+/// WebSocket Sink类型别名
+type WsSink = Arc<Mutex<SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>>>;
 use tokio::sync::{mpsc, Mutex, RwLock};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 use log::{info, error, debug, warn};
 use chrono::{DateTime, Utc};
-use std::time::Duration;
 
 /// Binance期货WebSocket处理器
 pub struct BinanceFuturesWebSocketHandler {
@@ -29,7 +31,7 @@ pub struct BinanceFuturesWebSocketHandler {
     /// WebSocket读取流
     ws_stream: Option<SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>>,
     /// WebSocket写入端
-    ws_sink: Option<Arc<Mutex<SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>>>>,
+    ws_sink: Option<WsSink>,
     /// 数据发送通道
     data_sender: Option<mpsc::Sender<MarketDataEvent>>,
     /// 交易事件发送通道
@@ -347,7 +349,7 @@ impl BinanceFuturesWebSocketHandler {
     }
     
     /// 获取WebSocket sink的引用（用于高级连接管理）
-    pub async fn get_ws_sink(&self) -> Option<Arc<Mutex<SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>>>> {
+    pub async fn get_ws_sink(&self) -> Option<WsSink> {
         self.ws_sink.clone()
     }
     

@@ -15,7 +15,7 @@ use crate::connectors::common::{
     adaptive_timeout::AdaptiveTimeoutManager,
     batch_subscription::BatchSubscriptionManager,
 };
-use crate::types::config::{SubscriptionResult, BatchSubscriptionResult, SubscriptionStatus, ConnectionQuality, ConnectionQualityLevel};
+use crate::types::config::{BatchSubscriptionResult, ConnectionQuality};
 use crate::types::*;
 use super::config::BinanceConfig;
 use super::spot::BinanceSpotConnector;
@@ -94,7 +94,7 @@ impl ExchangeConnector for BinanceAdapter {
         
         // 初始化WebSocket优化模块
         {
-            let mut ping_manager = self.emergency_ping_manager.write().await;
+            let ping_manager = self.emergency_ping_manager.write().await;
             ping_manager.reset().await;
             
             let timeout_manager = self.adaptive_timeout_manager.write().await;

@@ -17,7 +17,7 @@ use crate::connectors::common::{
     batch_subscription::BatchSubscriptionManager,
 };
 use crate::types::{
-    config::{ConnectorConfig, ConnectionStatus, SubscriptionConfig, SubscriptionResult, BatchSubscriptionResult, SubscriptionStatus, ConnectionQuality, ConnectionQualityLevel},
+    config::{ConnectorConfig, ConnectionStatus, SubscriptionConfig, BatchSubscriptionResult, ConnectionQuality},
     common::DataType,
     market_data::{StandardizedMessage, StandardizedOrderBook, StandardizedTrade},
     orders::{OrderRequest, OrderResponse, OrderStatus},
@@ -91,10 +91,10 @@ impl ExchangeConnector for LBankConnector {
         
         // 初始化WebSocket优化模块
         {
-            let mut ping_manager = self.emergency_ping_manager.write().await;
+            let ping_manager = self.emergency_ping_manager.write().await;
             ping_manager.reset().await;
             
-            let mut timeout_manager = self.adaptive_timeout_manager.write().await;
+            let timeout_manager = self.adaptive_timeout_manager.write().await;
             timeout_manager.reset().await;
         }
         
@@ -451,7 +451,7 @@ impl LBankConnector {
     
     /// 重置超时管理器
     pub async fn reset_timeout_manager(&self) {
-        let mut timeout_manager = self.adaptive_timeout_manager.write().await;
+        let timeout_manager = self.adaptive_timeout_manager.write().await;
         timeout_manager.reset().await;
     }
 }

@@ -3,8 +3,6 @@
 
 use std::{
     collections::HashMap,
-    fs::File,
-    io::{BufWriter, Write},
     path::Path,
     time::{Duration, Instant},
 };
@@ -20,7 +18,7 @@ use tokio::{
 
 use trifury::config::get_config;
 use trifury::{
-    core::AppError,
+    types::errors::AppError,
     connectors::{
         binance::{
             futures::{
@@ -28,6 +26,11 @@ use trifury::{
                 config::BinanceFuturesConfig,
             },
         },
+    },
+    sinks::{
+        DataSink,
+        factory::{SinkConfig, SinkFactory},
+        write_record_serialized,
     },
     types::{
         market_data::{MarketDataEvent, StandardizedTrade, PriceLevel},
@@ -96,90 +99,11 @@ struct OrderBook {
     timestamp: i64,
 }
 
-/// 批量缓冲JSON写入器
-struct BatchedJsonWriter {
-    writer: BufWriter<File>,
-    buffer: Vec<String>,
-    batch_size: usize,
-    last_flush: Instant,
-    flush_interval: Duration,
-}
+// 旧的BatchedJsonWriter已被新的Sink抽象替代
 
-impl BatchedJsonWriter {
-    fn new(file: File, batch_size: usize, flush_interval_ms: u64) -> Self {
-        Self {
-            writer: BufWriter::new(file),
-            buffer: Vec::with_capacity(batch_size),
-            batch_size,
-            last_flush: Instant::now(),
-            flush_interval: Duration::from_millis(flush_interval_ms),
-        }
-    }
-    
-    /// 写入一条记录到缓冲区
-    fn write_record<T: Serialize>(&mut self, record: &T) -> Result<bool, AppError> {
-        let json_line = serde_json::to_string(record)
-            .map_err(|e| AppError::ConfigError(format!("JSON序列化失败: {e}")))?;
-        
-        self.buffer.push(json_line);
-        
-        // 检查是否需要立即刷写
-        if self.buffer.len() >= self.batch_size {
-            self.flush_buffer()?;
-            Ok(true) // 表示发生了刷写
-        } else {
-            Ok(false) // 仅缓冲，未刷写
-        }
-    }
-    
-    /// 强制刷写缓冲区
-    fn flush_buffer(&mut self) -> Result<(), AppError> {
-        if self.buffer.is_empty() {
-            return Ok(());
-        }
-        
-        // 批量写入所有缓冲的记录
-        for line in &self.buffer {
-            writeln!(self.writer, "{line}")
-                .map_err(|e| AppError::ConfigError(format!("写入文件失败: {e}")))?
-        }
-        
-        // 刷写到磁盘
-        self.writer.flush()
-            .map_err(|e| AppError::ConfigError(format!("刷新文件失败: {e}")))?;
-        
-        let wrote = self.buffer.len();
-        // 清空缓冲区并更新时间戳
-        self.buffer.clear();
-        self.last_flush = Instant::now();
-        
-        // 降低日志噪声：批量刷写改为debug级别
-        debug!("批量刷写完成，写入 {wrote} 条记录");
-        Ok(())
-    }
-}
 
-/// JSON写入器
-struct JsonWriter {
-    inner: BatchedJsonWriter,
-}
 
-impl JsonWriter {
-    fn new(file: File) -> Self {
-        let cfg = get_config().data_collector.clone();
-        Self {
-            inner: BatchedJsonWriter::new(file, cfg.batch_write_buffer_size, cfg.flush_interval_ms),
-        }
-    }
-    
-    fn write_record<T: Serialize>(&mut self, record: &T) -> Result<(), AppError> {
-        self.inner.write_record(record).map(|_| ())
-    }
-    
-    fn flush(&mut self) -> Result<(), AppError> {
-        self.inner.flush_buffer()
-    }
-}
+
 
 /// 数据收集器
 struct DataCollector {
@@ -203,8 +127,8 @@ impl DataCollector {
         }
     }
 
-    /// 创建JSON写入器
-    fn create_json_writer(&self, filename: &str) -> Result<JsonWriter, AppError> {
+    /// 创建Sink实例
+    fn create_sink(&self, filename: &str) -> Result<Box<dyn DataSink>, AppError> {
         let path = Path::new(&self.data_dir).join(filename);
         
         // 确保父目录存在
@@ -213,21 +137,35 @@ impl DataCollector {
                 .map_err(|e| AppError::ConfigError(format!("创建目录失败: {e}")))?;
         }
         
-        let file = File::create(&path)
-            .map_err(|e| AppError::ConfigError(format!("创建文件失败: {e}")))?;
-        Ok(JsonWriter::new(file))
+        let cfg = get_config().data_collector.clone();
+        let sink_config = SinkConfig::File {
+            data_dir: path.parent().unwrap_or_else(|| std::path::Path::new("./data")).to_string_lossy().to_string(),
+            batch_size: Some(cfg.batch_write_buffer_size),
+            flush_interval_ms: Some(cfg.flush_interval_ms),
+            rotation_size_bytes: None,
+            enable_compression: Some(false),
+        };
+        
+        SinkFactory::create_sink(sink_config)
     }
 
     /// 收集期货数据
     async fn collect_futures_data(&self) -> Result<(), AppError> {
         info!("开始收集期货市场数据...");
 
-        // 创建JSON写入器
-        let mut orderbook_writer = self.create_json_writer("futures/orderbook_5level.jsonl")?;
-        let mut trade_writer = self.create_json_writer("futures/trades.jsonl")?;
-        let mut mark_price_writer = self.create_json_writer("futures/mark_price.jsonl")?;
-        let mut funding_rate_writer = self.create_json_writer("futures/funding_rate.jsonl")?;
-        let mut open_interest_writer = self.create_json_writer("futures/open_interest.jsonl")?;
+        // 创建Sink实例
+        let mut orderbook_sink = self.create_sink("futures/orderbook_5level.jsonl")?;
+        let mut trade_sink = self.create_sink("futures/trades.jsonl")?;
+        let mut mark_price_sink = self.create_sink("futures/mark_price.jsonl")?;
+        let mut funding_rate_sink = self.create_sink("futures/funding_rate.jsonl")?;
+        let mut open_interest_sink = self.create_sink("futures/open_interest.jsonl")?;
+        
+        // 初始化所有Sink
+        orderbook_sink.initialize().await?;
+        trade_sink.initialize().await?;
+        mark_price_sink.initialize().await?;
+        funding_rate_sink.initialize().await?;
+        open_interest_sink.initialize().await?;
 
         // 创建通道
         let cfg = get_config().data_collector.clone();
@@ -296,13 +234,13 @@ impl DataCollector {
                             let timestamp = chrono::DateTime::from_timestamp(depth_update.event_time / 1000, 0)
                                 .unwrap_or_else(Utc::now);
                             let record = self.create_orderbook_record(&depth_update.symbol, &orderbook, timestamp, "futures");
-                            if let Err(e) = orderbook_writer.write_record(&record) {
+                            if let Err(e) = write_record_serialized(orderbook_sink.as_mut(), &record).await {
                                 error!("写入期货订单簿数据失败: {e}");
                             } else {
                                 *data_counts.entry("orderbook").or_insert(0) += 1;
                                 debug!("成功写入订单簿数据: {} (总计: {})", depth_update.symbol, data_counts.get("orderbook").unwrap_or(&0));
                                 // 立即刷新到磁盘
-                                if let Err(e) = orderbook_writer.flush() {
+                                if let Err(e) = orderbook_sink.flush().await {
                                     error!("刷新订单簿文件失败: {e}");
                                 }
                             }
@@ -320,7 +258,7 @@ impl DataCollector {
                                 next_funding_time: chrono::DateTime::from_timestamp(mark_price_update.next_funding_time / 1000, 0)
                                     .unwrap_or_else(Utc::now).to_rfc3339(),
                             };
-                            if let Err(e) = mark_price_writer.write_record(&record) {
+                            if let Err(e) = write_record_serialized(mark_price_sink.as_mut(), &record).await {
                                 error!("写入标记价格数据失败: {e}");
                             } else {
                                 *data_counts.entry("mark_price").or_insert(0) += 1;
@@ -336,7 +274,7 @@ impl DataCollector {
                                 funding_rate: funding_rate_update.funding_rate,
                                 funding_time: timestamp.to_rfc3339(),
                             };
-                            if let Err(e) = funding_rate_writer.write_record(&record) {
+                            if let Err(e) = write_record_serialized(funding_rate_sink.as_mut(), &record).await {
                                 error!("写入资金费率数据失败: {e}");
                             } else {
                                 *data_counts.entry("funding_rate").or_insert(0) += 1;
@@ -352,7 +290,7 @@ impl DataCollector {
                                 open_interest: open_interest_update.open_interest,
                                 open_interest_value: 0.0, // 如果API不提供则设为0
                             };
-                            if let Err(e) = open_interest_writer.write_record(&record) {
+                            if let Err(e) = write_record_serialized(open_interest_sink.as_mut(), &record).await {
                                 error!("写入未平仓合约数据失败: {e}");
                             } else {
                                 *data_counts.entry("open_interest").or_insert(0) += 1;
@@ -379,7 +317,7 @@ impl DataCollector {
                         let timestamp = chrono::DateTime::from_timestamp(trade_execution.timestamp as i64 / 1000, 0)
                             .unwrap_or_else(Utc::now);
                         let record = self.create_trade_record(&trade_execution.symbol, &trade, timestamp, "futures");
-                        if let Err(e) = trade_writer.write_record(&record) {
+                        if let Err(e) = write_record_serialized(trade_sink.as_mut(), &record).await {
                             error!("写入期货交易数据失败: {e}");
                         } else {
                             *data_counts.entry("trade").or_insert(0) += 1;
@@ -388,11 +326,11 @@ impl DataCollector {
                     }
                 }
                 _ = flush_timer.tick() => {
-                    if let Err(e) = orderbook_writer.flush() { warn!("定时刷新订单簿写入器失败: {e}"); }
-                    if let Err(e) = trade_writer.flush() { warn!("定时刷新交易写入器失败: {e}"); }
-                    if let Err(e) = mark_price_writer.flush() { warn!("定时刷新标记价格写入器失败: {e}"); }
-                    if let Err(e) = funding_rate_writer.flush() { warn!("定时刷新资金费率写入器失败: {e}"); }
-                    if let Err(e) = open_interest_writer.flush() { warn!("定时刷新未平仓写入器失败: {e}"); }
+                    if let Err(e) = orderbook_sink.flush().await { warn!("定时刷新订单簿Sink失败: {e}"); }
+                    if let Err(e) = trade_sink.flush().await { warn!("定时刷新交易Sink失败: {e}"); }
+                    if let Err(e) = mark_price_sink.flush().await { warn!("定时刷新标记价格Sink失败: {e}"); }
+                    if let Err(e) = funding_rate_sink.flush().await { warn!("定时刷新资金费率Sink失败: {e}"); }
+                    if let Err(e) = open_interest_sink.flush().await { warn!("定时刷新未平仓Sink失败: {e}"); }
                 }
                 _ = sleep(Duration::from_millis(100)) => {
                     // 如果collection_duration为0，则持续运行；否则检查时间限制
@@ -403,12 +341,19 @@ impl DataCollector {
             }
         }
 
-        // 刷新并关闭所有文件
-        orderbook_writer.flush().map_err(|e| AppError::ConfigError(format!("刷新期货订单簿文件失败: {e}")))?;
-        trade_writer.flush().map_err(|e| AppError::ConfigError(format!("刷新期货交易文件失败: {e}")))?;
-        mark_price_writer.flush().map_err(|e| AppError::ConfigError(format!("刷新标记价格文件失败: {e}")))?;
-        funding_rate_writer.flush().map_err(|e| AppError::ConfigError(format!("刷新资金费率文件失败: {e}")))?;
-        open_interest_writer.flush().map_err(|e| AppError::ConfigError(format!("刷新未平仓合约文件失败: {e}")))?;
+        // 刷新并关闭所有Sink
+        orderbook_sink.flush().await.map_err(|e| AppError::ConfigError(format!("刷新期货订单簿Sink失败: {e}")))?;
+        trade_sink.flush().await.map_err(|e| AppError::ConfigError(format!("刷新期货交易Sink失败: {e}")))?;
+        mark_price_sink.flush().await.map_err(|e| AppError::ConfigError(format!("刷新标记价格Sink失败: {e}")))?;
+        funding_rate_sink.flush().await.map_err(|e| AppError::ConfigError(format!("刷新资金费率Sink失败: {e}")))?;
+        open_interest_sink.flush().await.map_err(|e| AppError::ConfigError(format!("刷新未平仓合约Sink失败: {e}")))?;
+        
+        // 关闭所有Sink
+        orderbook_sink.close().await.map_err(|e| AppError::ConfigError(format!("关闭期货订单簿Sink失败: {e}")))?;
+        trade_sink.close().await.map_err(|e| AppError::ConfigError(format!("关闭期货交易Sink失败: {e}")))?;
+        mark_price_sink.close().await.map_err(|e| AppError::ConfigError(format!("关闭标记价格Sink失败: {e}")))?;
+        funding_rate_sink.close().await.map_err(|e| AppError::ConfigError(format!("关闭资金费率Sink失败: {e}")))?;
+        open_interest_sink.close().await.map_err(|e| AppError::ConfigError(format!("关闭未平仓合约Sink失败: {e}")))?;
 
         // 断开连接
         if let Err(e) = futures_connector.disconnect().await {

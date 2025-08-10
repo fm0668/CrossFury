@@ -1,33 +1,26 @@
 // src/sinks/file_sink.rs - 文件存储Sink实现
 
 use super::{DataSink, SinkHealth, SinkMetrics};
-use crate::core::AppError;
+use crate::types::errors::AppError;
 use async_trait::async_trait;
-use serde::Serialize;
 use std::fs::OpenOptions;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 use std::time::Instant;
 use tokio::sync::Mutex;
 
-/// 文件Sink配置
-#[derive(Debug, Clone)]
-pub struct FileSinkConfig {
-    pub file_path: String,
-    pub batch_size: usize,
-    pub flush_interval_ms: u64,
-    pub rotation_size_mb: Option<u64>,
-    pub compression: bool,
-}
+// 重新导出config.rs中的FileSinkConfig
+pub use crate::config::FileSinkConfig;
 
+// 为了向后兼容，提供默认实现
 impl Default for FileSinkConfig {
     fn default() -> Self {
         Self {
-            file_path: "data/market_data.jsonl".to_string(),
-            batch_size: 1000,
-            flush_interval_ms: 5000,
-            rotation_size_mb: Some(100),
-            compression: false,
+            data_dir: "./data".to_string(),
+            batch_size: 128,
+            flush_interval_ms: 1000,
+            rotation_size_bytes: Some(100 * 1024 * 1024), // 100MB
+            enable_compression: false,
         }
     }
 }
@@ -44,18 +37,19 @@ pub struct FileSink {
 
 impl FileSink {
     pub fn new(config: FileSinkConfig) -> Result<Self, AppError> {
-        // 确保目录存在
-        if let Some(parent) = Path::new(&config.file_path).parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(AppError::IoError)?;
-        }
+        // 确保数据目录存在
+        std::fs::create_dir_all(&config.data_dir)
+            .map_err(|e| AppError::IoError(e.to_string()))?;
+        
+        // 生成文件路径
+        let file_path = format!("{}/market_data.jsonl", config.data_dir);
         
         // 打开文件
         let file = OpenOptions::new()
             .create(true)
             .append(true)
-            .open(&config.file_path)
-            .map_err(AppError::IoError)?;
+            .open(&file_path)
+            .map_err(|e| AppError::IoError(e.to_string()))?;
         
         let writer = BufWriter::new(file);
         
@@ -98,15 +92,15 @@ impl FileSink {
         for record in buffer.iter() {
             let bytes = record.as_bytes();
             writer.write_all(bytes)
-                .map_err(AppError::IoError)?;
+                .map_err(|e| AppError::IoError(e.to_string()))?;
             writer.write_all(b"\n")
-                .map_err(AppError::IoError)?;
+                .map_err(|e| AppError::IoError(e.to_string()))?;
             total_bytes += bytes.len() + 1; // +1 for newline
         }
         
         // 刷写到磁盘
         writer.flush()
-            .map_err(AppError::IoError)?;
+            .map_err(|e| AppError::IoError(e.to_string()))?;
         
         // 清空缓冲区
         buffer.clear();
@@ -190,9 +184,9 @@ impl DataSink for FileSink {
         // 检查文件是否可写
         let mut health_check = health.clone();
         
-        // 检查文件路径是否存在且可写
-        if !Path::new(&self.config.file_path).exists() {
-            health_check = health_check.with_error("文件不存在");
+        // 检查数据目录是否存在且可写
+        if !Path::new(&self.config.data_dir).exists() {
+            health_check = health_check.with_error("数据目录不存在");
         }
         
         // 检查最后写入时间
@@ -231,7 +225,7 @@ impl DataSink for FileSink {
         // 关闭文件
         let mut writer = self.writer.lock().await;
         writer.flush()
-            .map_err(AppError::IoError)?;
+            .map_err(|e| AppError::IoError(e.to_string()))?;
         
         Ok(())
     }
@@ -247,11 +241,11 @@ mod tests {
     async fn test_file_sink_basic_operations() {
         let temp_file = NamedTempFile::new().unwrap();
         let config = FileSinkConfig {
-            file_path: temp_file.path().to_string_lossy().to_string(),
+            data_dir: temp_file.path().parent().unwrap().to_string_lossy().to_string(),
             batch_size: 2,
             flush_interval_ms: 1000,
-            rotation_size_mb: None,
-            compression: false,
+            rotation_size_bytes: None,
+            enable_compression: false,
         };
         
         let mut sink = FileSink::new(config).unwrap();

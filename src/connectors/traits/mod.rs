@@ -8,6 +8,24 @@ use chrono;
 use crate::types::*;
 use crate::types::config::BatchSubscriptionResult;
 
+// 现代化trait设计模块
+pub mod modern;
+pub mod modern_binance;
+pub mod subscription_manager;
+pub mod batch_writer;
+pub mod websocket_manager;
+
+// 重新导出现代化trait
+pub use modern::*;
+pub use modern_binance::*;
+pub use subscription_manager::{
+    SubscriptionManager, SubscriptionConfig, DataType as SubscriptionDataType, 
+    SubscriptionPriority, SubscriptionItem, ConnectionStrategy, 
+    SubscriptionManagerConfig, SubscriptionManagerError, SubscriptionEvent,
+    WebSocketConnection, ConnectionStatus as SubMgrConnectionStatus
+};
+pub use subscription_manager::SubscriptionStatus as SubMgrSubscriptionStatus;
+
 /// ExchangeConnector trait - 完全按照CrossFury_核心Trait定义.md实现
 #[async_trait]
 pub trait ExchangeConnector: Send + Sync {
@@ -85,7 +103,7 @@ pub trait ExchangeConnector: Send + Sync {
         })
     }
     
-    async fn get_subscription_status(&self) -> Result<HashMap<String, SubscriptionStatus>, ConnectorError> {
+    async fn get_subscription_status(&self) -> Result<HashMap<String, crate::types::SubscriptionStatus>, ConnectorError> {
         // 默认实现：返回空的订阅状态
         Ok(HashMap::new())
     }

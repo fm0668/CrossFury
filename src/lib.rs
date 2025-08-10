@@ -15,6 +15,12 @@ pub mod types;  // 新的类型系统
 pub mod connectors;  // 新的连接器系统
 pub mod sinks;  // 可插拔数据落地抽象
 
+// 重新导出统一的错误类型和结果类型
+pub use types::errors::{AppError, Result};
+
+// 重新导出核心类型
+pub use types::*;
+
 
 // Re-export key components for easier usage
 pub use core::*;
@@ -66,7 +72,6 @@ pub use cross_exchange::process_mapped_cross_exchange_arbitrage_subset;
 pub use terminal_log::run_clean_metrics_display;
 
 // Re-export exchange types
-pub use exchange_types::*;
 
 // 注意：原 network 模块的功能已移除
 // 请使用重构后的 connectors 模块中的相应功能

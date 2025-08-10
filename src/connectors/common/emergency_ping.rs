@@ -34,6 +34,7 @@ pub struct EmergencyPingConfig {
 
 /// 紧急Ping状态
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct EmergencyPingState {
     /// 最后一次ping时间
     last_ping_time: Option<SystemTime>,
@@ -72,17 +73,6 @@ impl Default for EmergencyPingConfig {
     }
 }
 
-impl Default for EmergencyPingState {
-    fn default() -> Self {
-        Self {
-            last_ping_time: None,
-            last_pong_time: None,
-            retry_count: 0,
-            is_emergency_pinging: false,
-            consecutive_failures: 0,
-        }
-    }
-}
 
 impl EmergencyPingManager {
     /// 创建新的紧急Ping管理器

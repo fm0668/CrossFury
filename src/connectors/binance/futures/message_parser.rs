@@ -4,7 +4,7 @@
 
 use crate::types::market_data::{MarketDataEvent, DepthUpdate, TradeUpdate, KlineUpdate, TickerUpdate, MarkPriceUpdate, OpenInterestUpdate, FundingRateUpdate, PriceLevel};
 use crate::types::trading::{TradeEvent, OrderUpdate as TradingOrderUpdate, TradeExecution, PositionUpdate as TradingPositionUpdate, BalanceUpdate as TradingBalanceUpdate, OrderSide, OrderType, OrderStatus, PositionSide as TradingPositionSide, TimeInForce};
-use crate::core::AppError;
+use crate::types::errors::AppError;
 
 // 定义Result类型别名
 pub type Result<T> = std::result::Result<T, AppError>;
@@ -446,7 +446,7 @@ impl BinanceFuturesMessageParser {
             .and_then(|t| t.as_i64())
             .ok_or_else(|| AppError::ParseError("缺少事件时间字段".to_string()))?;
         
-        let transaction_time = data.get("T")
+        let _transaction_time = data.get("T")
             .and_then(|t| t.as_i64())
             .ok_or_else(|| AppError::ParseError("缺少交易时间字段".to_string()))?;
         

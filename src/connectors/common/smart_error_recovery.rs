@@ -5,7 +5,7 @@ use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, SystemTime};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use log::{debug, warn, error, info};
+use log::debug;
 use serde::{Deserialize, Serialize};
 use crate::types::events::SystemEvent;
 use crate::types::config::ConnectionStatus;
@@ -53,6 +53,7 @@ pub struct SmartErrorRecoveryConfig {
 
 /// 错误历史记录
 #[derive(Debug)]
+#[derive(Default)]
 struct ErrorHistory {
     /// 错误记录列表
     records: VecDeque<ErrorRecord>,
@@ -295,15 +296,6 @@ impl Default for SmartErrorRecoveryConfig {
     }
 }
 
-impl Default for ErrorHistory {
-    fn default() -> Self {
-        Self {
-            records: VecDeque::new(),
-            error_type_counts: HashMap::new(),
-            patterns: Vec::new(),
-        }
-    }
-}
 
 impl Default for StrategyCache {
     fn default() -> Self {
@@ -381,7 +373,7 @@ impl SmartErrorRecovery {
             // 更新总错误数
             stats.total_errors += 1;
             
-            debug!("[SmartErrorRecovery] 记录错误: {:?} - {}", error_type, error_message);
+            debug!("[SmartErrorRecovery] 记录错误: {error_type:?} - {error_message}");
         } // 释放所有锁
         
         // 在锁释放后分析错误模式
@@ -498,7 +490,7 @@ impl SmartErrorRecovery {
         let start_time = SystemTime::now();
         let attempt_number = error_record.recovery_attempts.len() as u32 + 1;
         
-        debug!("[SmartErrorRecovery] 执行恢复策略: {:?} (尝试 {})", strategy, attempt_number);
+        debug!("[SmartErrorRecovery] 执行恢复策略: {strategy:?} (尝试 {attempt_number})");
         
         let mut attempt = RecoveryAttempt {
             attempt_number,
@@ -541,9 +533,9 @@ impl SmartErrorRecovery {
             recovery_time_ms,
             retry_count: attempt_number,
             message: if success {
-                format!("恢复成功，耗时 {}ms", recovery_time_ms)
+                format!("恢复成功，耗时 {recovery_time_ms}ms")
             } else {
-                format!("恢复失败，耗时 {}ms", recovery_time_ms)
+                format!("恢复失败，耗时 {recovery_time_ms}ms")
             },
         }
     }
@@ -648,7 +640,7 @@ impl SmartErrorRecovery {
         for action in actions {
             match action {
                 RecoveryAction::Wait(duration) => {
-                    debug!("[SmartErrorRecovery] 等待 {:?}", duration);
+                    debug!("[SmartErrorRecovery] 等待 {duration:?}");
                     tokio::time::sleep(*duration).await;
                 }
                 RecoveryAction::CloseConnection => {
@@ -664,7 +656,7 @@ impl SmartErrorRecovery {
                     // TODO: 实际的认证逻辑
                 }
                 RecoveryAction::SendSubscription(symbol) => {
-                    debug!("[SmartErrorRecovery] 发送订阅: {}", symbol);
+                    debug!("[SmartErrorRecovery] 发送订阅: {symbol}");
                     // TODO: 实际的订阅逻辑
                 }
                 RecoveryAction::SendHeartbeat => {
@@ -676,7 +668,7 @@ impl SmartErrorRecovery {
                     // TODO: 实际的状态清理逻辑
                 }
                 RecoveryAction::SwitchEndpoint(endpoint) => {
-                    debug!("[SmartErrorRecovery] 切换端点: {}", endpoint);
+                    debug!("[SmartErrorRecovery] 切换端点: {endpoint}");
                     // TODO: 实际的端点切换逻辑
                 }
                 RecoveryAction::ResetConfiguration => {
@@ -684,7 +676,7 @@ impl SmartErrorRecovery {
                     // TODO: 实际的配置重置逻辑
                 }
                 RecoveryAction::EmitSystemEvent(event) => {
-                    debug!("[SmartErrorRecovery] 发送系统事件: {:?}", event);
+                    debug!("[SmartErrorRecovery] 发送系统事件: {event:?}");
                     // TODO: 实际的事件发送逻辑
                 }
             }
@@ -730,7 +722,7 @@ impl SmartErrorRecovery {
                 let pattern2 = &recent_errors[i + window_size..i + window_size * 2];
                 
                 if pattern1 == pattern2 {
-                    let pattern_name = format!("重复模式_{}", window_size);
+                    let pattern_name = format!("重复模式_{window_size}");
                     let recommended_strategy = self.recommend_strategy_for_pattern(pattern1);
                     
                     let pattern = ErrorPattern {
@@ -744,8 +736,8 @@ impl SmartErrorRecovery {
                     
                     // 检查是否已存在相同模式
                     if !history.patterns.iter().any(|p| p.error_sequence == pattern.error_sequence) {
+                        debug!("[SmartErrorRecovery] 发现新错误模式: {pattern:?}");
                         history.patterns.push(pattern);
-                        debug!("[SmartErrorRecovery] 发现新错误模式: {:?}", pattern);
                     }
                 }
             }

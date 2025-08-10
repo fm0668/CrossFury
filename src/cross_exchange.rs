@@ -312,7 +312,7 @@ pub async fn buffer_multi_hop_opportunity(arb: MultiHopArbitragePath) {
 }
 
 /// Flush the cross-exchange opportunity buffer to a CSV file.
-pub async fn flush_cross_ex_buffer(filename: &str) -> Result<(), AppError> {
+pub async fn flush_cross_ex_buffer(filename: &str) -> Result<(), crate::types::errors::AppError> {
     let mut buf = CROSS_EX_BUFFER.lock().await;
     if buf.is_empty() {
         return Ok(());
@@ -365,7 +365,7 @@ pub async fn flush_cross_ex_buffer(filename: &str) -> Result<(), AppError> {
 }
 
 /// Flush multi-hop arbitrage opportunities to CSV file
-pub async fn flush_multi_hop_buffer(filename: &str) -> Result<(), AppError> {
+pub async fn flush_multi_hop_buffer(filename: &str) -> Result<(), crate::types::errors::AppError> {
     let mut buf = MULTI_HOP_BUFFER.lock().await;
     if buf.is_empty() {
         return Ok(());

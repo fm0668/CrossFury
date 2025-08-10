@@ -5,7 +5,7 @@
 use crate::connectors::binance::futures::config::BinanceFuturesConfig;
 use crate::connectors::binance::futures::constants::*;
 use crate::types::trading::{OrderSide, OrderType, TimeInForce as TradingTimeInForce, PositionSide as TradingPositionSide};
-use crate::core::AppError;
+use crate::types::errors::AppError;
 
 // 定义Result类型别名
 pub type Result<T> = std::result::Result<T, AppError>;
@@ -90,6 +90,21 @@ impl MarginType {
             MarginType::Cross => "CROSSED",
         }
     }
+}
+
+/// 新订单参数
+#[derive(Debug, Clone)]
+pub struct NewOrderParams<'a> {
+    pub symbol: &'a str,
+    pub side: &'a str,
+    pub order_type: &'a str,
+    pub quantity: f64,
+    pub price: Option<f64>,
+    pub time_in_force: Option<&'a str>,
+    pub reduce_only: Option<bool>,
+    pub close_position: Option<bool>,
+    pub position_side: Option<&'a str>,
+    pub client_order_id: Option<&'a str>,
 }
 
 impl BinanceFuturesRestClient {
@@ -491,29 +506,19 @@ impl BinanceFuturesRestClient {
         Ok(())
     }
     
+
+
     /// 下单 (new_order方法，兼容connector.rs的调用)
-    pub async fn new_order(
-        &self,
-        symbol: &str,
-        side: &str,
-        order_type: &str,
-        quantity: f64,
-        price: Option<f64>,
-        time_in_force: Option<&str>,
-        reduce_only: Option<bool>,
-        close_position: Option<bool>,
-        position_side: Option<&str>,
-        client_order_id: Option<&str>,
-    ) -> Result<Value> {
+    pub async fn new_order(&self, params: NewOrderParams<'_>) -> Result<Value> {
         // 构建OrderRequest并调用place_order
         let order_request = OrderRequest {
-            symbol: symbol.to_string(),
-            side: match side {
+            symbol: params.symbol.to_string(),
+            side: match params.side {
                 "BUY" => OrderSide::Buy,
                 "SELL" => OrderSide::Sell,
                 _ => return Err(AppError::ParseError("Invalid order side".to_string())),
             },
-            order_type: match order_type {
+            order_type: match params.order_type {
                 "MARKET" => OrderType::Market,
                 "LIMIT" => OrderType::Limit,
                 "STOP" => OrderType::Stop,
@@ -522,28 +527,28 @@ impl BinanceFuturesRestClient {
                 "TAKE_PROFIT_MARKET" => OrderType::TakeProfitMarket,
                 _ => return Err(AppError::ParseError("Invalid order type".to_string())),
             },
-            quantity,
-            price,
-            time_in_force: time_in_force.map(|tif| match tif {
+            quantity: params.quantity,
+            price: params.price,
+            time_in_force: params.time_in_force.map(|tif| match tif {
                 "GTC" => TradingTimeInForce::GTC,
                 "IOC" => TradingTimeInForce::IOC,
                 "FOK" => TradingTimeInForce::FOK,
                 "GTX" => TradingTimeInForce::GTX,
                 _ => TradingTimeInForce::GTC,
             }),
-            position_side: position_side.map(|ps| match ps {
+            position_side: params.position_side.map(|ps| match ps {
                 "BOTH" => TradingPositionSide::Both,
                 "LONG" => TradingPositionSide::Long,
                 "SHORT" => TradingPositionSide::Short,
                 _ => TradingPositionSide::Both,
             }),
-            reduce_only,
-            close_position,
+            reduce_only: params.reduce_only,
+            close_position: params.close_position,
             activation_price: None,
             callback_rate: None,
             working_type: None,
             price_protect: None,
-            client_order_id: client_order_id.map(|s| s.to_string()),
+            client_order_id: params.client_order_id.map(|s| s.to_string()),
         };
         
         self.place_order(&order_request).await

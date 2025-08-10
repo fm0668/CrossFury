@@ -356,7 +356,7 @@ impl AdaptiveTimeoutManager {
         
         state.current_timeout = Duration::from_millis(clamped_timeout_ms);
         
-        info!("[AdaptiveTimeout] 强制设置超时时间: {}ms", clamped_timeout_ms);
+        info!("[AdaptiveTimeout] 强制设置超时时间: {clamped_timeout_ms}ms");
     }
 
     /// 获取状态摘要
@@ -388,7 +388,7 @@ impl AdaptiveTimeoutManager {
         
         if adjusted_ms != current_ms {
             state.current_timeout = Duration::from_millis(adjusted_ms);
-            info!("[AdaptiveTimeout] 配置更新后调整超时时间: {}ms -> {}ms", current_ms, adjusted_ms);
+            info!("[AdaptiveTimeout] 配置更新后调整超时时间: {current_ms}ms -> {adjusted_ms}ms");
         }
         
         info!("[AdaptiveTimeout] 配置已更新");

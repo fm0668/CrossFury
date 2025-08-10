@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Instant, Duration};
 use dashmap::DashMap;
 use log::{info, error};
-use crate::core::AppError;
+use crate::types::errors::AppError;
 use crate::exchange_types::Exchange;
 use crate::config::get_config;
 
@@ -49,9 +49,9 @@ impl From<&AppError> for ErrorCategory {
                 }
             },
             AppError::RequestError(req_err) => {
-                if req_err.is_timeout() {
+                if req_err.contains("timeout") {
                     ErrorCategory::Timeout
-                } else if req_err.is_connect() {
+                } else if req_err.contains("connect") {
                     ErrorCategory::ConnectionFailure
                 } else {
                     ErrorCategory::Unknown
@@ -62,11 +62,42 @@ impl From<&AppError> for ErrorCategory {
             AppError::IoError(_) => ErrorCategory::InternalFailure,
             AppError::CsvError(_) => ErrorCategory::InternalFailure,
             AppError::MissingPriceData(_) => ErrorCategory::SymbolInvalid,
-            AppError::TimeoutError => ErrorCategory::Timeout,
+            AppError::TimeoutError(_) => ErrorCategory::Timeout,
             AppError::ConnectionError(_) => ErrorCategory::ConnectionFailure,
             AppError::ConfigError(_) => ErrorCategory::InternalFailure,
             AppError::CryptoError(_) => ErrorCategory::InternalFailure,
             AppError::RiskError(_) => ErrorCategory::ExchangeRejection,
+            // 新增的错误类型
+            AppError::ConnectionFailed(_) => ErrorCategory::ConnectionFailure,
+            AppError::ConnectionLost(_) => ErrorCategory::ConnectionFailure,
+            AppError::InitializationFailed(_) => ErrorCategory::InternalFailure,
+            AppError::DisconnectionFailed(_) => ErrorCategory::InternalFailure,
+            AppError::AuthenticationFailed(_) => ErrorCategory::Authentication,
+            AppError::InvalidCredentials(_) => ErrorCategory::Authentication,
+            AppError::SubscriptionError(_) => ErrorCategory::Unknown,
+            AppError::SubscriptionFailed(_) => ErrorCategory::Unknown,
+            AppError::InvalidSymbol(_) => ErrorCategory::SymbolInvalid,
+            AppError::TradingError(_) => ErrorCategory::ExchangeRejection,
+            AppError::OrderPlacementFailed(_) => ErrorCategory::ExchangeRejection,
+            AppError::OrderCancellationFailed(_) => ErrorCategory::ExchangeRejection,
+            AppError::InsufficientBalance(_) => ErrorCategory::ExchangeRejection,
+            AppError::InvalidOrderParameters(_) => ErrorCategory::ExchangeRejection,
+            AppError::DataParsingError(_) => ErrorCategory::MessageParsing,
+            AppError::InvalidResponse(_) => ErrorCategory::MessageParsing,
+            AppError::NetworkError(_) => ErrorCategory::ConnectionFailure,
+            AppError::RateLimitExceeded(_) => ErrorCategory::RateLimitExceeded,
+            AppError::ExchangeNotFound(_) => ErrorCategory::Unknown,
+            AppError::ServiceUnavailable(_) => ErrorCategory::ServiceUnavailable,
+            AppError::InternalError(_) => ErrorCategory::InternalFailure,
+            AppError::TradingNotImplemented => ErrorCategory::Unknown,
+            AppError::RoutingError(_) => ErrorCategory::Unknown,
+            AppError::PositionLimitExceeded(_) => ErrorCategory::ExchangeRejection,
+            AppError::OrderSizeLimitExceeded(_) => ErrorCategory::ExchangeRejection,
+            AppError::ExposureLimitExceeded(_) => ErrorCategory::ExchangeRejection,
+            AppError::PositionNotFound(_) => ErrorCategory::Unknown,
+            AppError::InvalidPositionData(_) => ErrorCategory::MessageParsing,
+            AppError::SyncError(_) => ErrorCategory::InternalFailure,
+            AppError::CalculationError(_) => ErrorCategory::InternalFailure,
             AppError::Other(msg) => {
                 if msg.contains("rate limit") || msg.contains("too many requests") {
                     ErrorCategory::RateLimitExceeded

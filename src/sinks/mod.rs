@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::time::Instant;
-use crate::core::AppError;
+use crate::types::errors::AppError;
 
 pub mod file_sink;
 pub mod factory;
@@ -46,7 +46,7 @@ pub async fn write_record_serialized<T: Serialize + Send + Sync>(
     record: &T,
 ) -> Result<(), AppError> {
     let json_str = serde_json::to_string(record)
-        .map_err(AppError::SerializationError)?;
+        .map_err(|e| AppError::SerializationError(e.to_string()))?;
     sink.write_record_json(&json_str).await
 }
 
@@ -58,7 +58,7 @@ pub async fn write_batch_serialized<T: Serialize + Send + Sync>(
     let mut json_strings = Vec::with_capacity(records.len());
     for record in records {
         let json_str = serde_json::to_string(record)
-            .map_err(AppError::SerializationError)?;
+            .map_err(|e| AppError::SerializationError(e.to_string()))?;
         json_strings.push(json_str);
     }
     sink.write_batch_json(&json_strings).await
@@ -71,6 +71,12 @@ pub struct SinkHealth {
     pub last_write_time: Option<Instant>,
     pub error_count: u64,
     pub details: HashMap<String, String>,
+}
+
+impl Default for SinkHealth {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SinkHealth {
@@ -152,7 +158,7 @@ impl std::str::FromStr for SinkType {
             "kafka" => Ok(SinkType::Kafka),
             "clickhouse" => Ok(SinkType::ClickHouse),
             "s3" => Ok(SinkType::S3),
-            _ => Err(AppError::ConfigError(format!("未知的Sink类型: {}", s))),
+            _ => Err(AppError::ConfigError(format!("未知的Sink类型: {s}"))),
         }
     }
 }

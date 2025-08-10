@@ -162,7 +162,7 @@ impl BinanceSpotConnector {
     }
     
     /// 解析深度级别数据
-    fn parse_depth_levels(&self, levels: &Vec<Value>) -> Vec<(f64, f64)> {
+    fn parse_depth_levels(&self, levels: &[Value]) -> Vec<(f64, f64)> {
         levels.iter()
             .filter_map(|level| {
                 if let Some(arr) = level.as_array() {

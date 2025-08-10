@@ -43,6 +43,7 @@ pub struct BatchSubscriptionConfig {
 
 /// 批量订阅状态
 #[derive(Debug)]
+#[derive(Default)]
 struct BatchSubscriptionState {
     /// 待处理的订阅队列
     pending_queue: VecDeque<SubscriptionRequest>,
@@ -146,17 +147,6 @@ impl Default for BatchSubscriptionConfig {
     }
 }
 
-impl Default for BatchSubscriptionState {
-    fn default() -> Self {
-        Self {
-            pending_queue: VecDeque::new(),
-            active_batches: HashMap::new(),
-            subscription_status: HashMap::new(),
-            stats: BatchSubscriptionStats::default(),
-            last_batch_time: None,
-        }
-    }
-}
 
 impl Default for BatchSubscriptionStats {
     fn default() -> Self {
@@ -205,11 +195,11 @@ impl BatchSubscriptionManager {
         if let Some(status) = state.subscription_status.get(&symbol) {
             match status {
                 SubscriptionStatus::Active => {
-                    debug!("[BatchSubscription] 符号 {} 已经订阅", symbol);
+                    debug!("[BatchSubscription] 符号 {symbol} 已经订阅");
                     return Ok(());
                 }
                 SubscriptionStatus::Subscribing => {
-                    debug!("[BatchSubscription] 符号 {} 正在订阅中", symbol);
+                    debug!("[BatchSubscription] 符号 {symbol} 正在订阅中");
                     return Ok(());
                 }
                 _ => {}
@@ -315,7 +305,7 @@ impl BatchSubscriptionManager {
             return None;
         }
         
-        let batch_id = format!("batch_{}", uuid::Uuid::new_v4().to_string()[..8].to_string());
+        let batch_id = format!("batch_{}", &uuid::Uuid::new_v4().to_string()[..8]);
         let start_time = SystemTime::now();
         
         // 创建批次信息
@@ -511,7 +501,7 @@ impl BatchSubscriptionManager {
         state.stats.queue_length = state.pending_queue.len();
         
         if retry_count > 0 {
-            info!("[BatchSubscription] 重新排队 {} 个失败的订阅", retry_count);
+            info!("[BatchSubscription] 重新排队 {retry_count} 个失败的订阅");
         }
         
         Ok(retry_count)
@@ -595,7 +585,7 @@ impl BatchSubscriptionManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::time::{sleep, Duration as TokioDuration};
+    use tokio::time::sleep;
 
     #[tokio::test]
     async fn test_batch_subscription_manager_creation() {

@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use log::{debug, warn, error};
+use log::debug;
 use serde::{Deserialize, Serialize};
 use regex::Regex;
 
@@ -37,6 +37,7 @@ pub struct SymbolConverterConfig {
 
 /// 符号缓存
 #[derive(Debug)]
+#[derive(Default)]
 struct SymbolCache {
     /// 标准化符号到交易所符号的映射
     standard_to_exchange: HashMap<String, HashMap<String, String>>,
@@ -48,6 +49,7 @@ struct SymbolCache {
 
 /// 正则表达式缓存
 #[derive(Debug)]
+#[derive(Default)]
 struct RegexCache {
     /// 下划线格式正则
     underscore_regex: Option<Regex>,
@@ -120,11 +122,11 @@ pub enum ConversionError {
 impl std::fmt::Display for ConversionError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            ConversionError::InvalidFormat(msg) => write!(f, "无效格式: {}", msg),
-            ConversionError::UnsupportedFormat(msg) => write!(f, "不支持的格式: {}", msg),
-            ConversionError::ParseError(msg) => write!(f, "解析错误: {}", msg),
-            ConversionError::CacheError(msg) => write!(f, "缓存错误: {}", msg),
-            ConversionError::UnknownPair(msg) => write!(f, "未知货币对: {}", msg),
+            ConversionError::InvalidFormat(msg) => write!(f, "无效格式: {msg}"),
+            ConversionError::UnsupportedFormat(msg) => write!(f, "不支持的格式: {msg}"),
+            ConversionError::ParseError(msg) => write!(f, "解析错误: {msg}"),
+            ConversionError::CacheError(msg) => write!(f, "缓存错误: {msg}"),
+            ConversionError::UnknownPair(msg) => write!(f, "未知货币对: {msg}"),
         }
     }
 }
@@ -143,26 +145,7 @@ impl Default for SymbolConverterConfig {
     }
 }
 
-impl Default for SymbolCache {
-    fn default() -> Self {
-        Self {
-            standard_to_exchange: HashMap::new(),
-            exchange_to_standard: HashMap::new(),
-            usage_count: HashMap::new(),
-        }
-    }
-}
 
-impl Default for RegexCache {
-    fn default() -> Self {
-        Self {
-            underscore_regex: None,
-            slash_regex: None,
-            no_separator_regex: None,
-            hyphen_regex: None,
-        }
-    }
-}
 
 impl SymbolConverter {
     /// 创建新的符号转换器
@@ -186,21 +169,21 @@ impl SymbolConverter {
         if cache.underscore_regex.is_none() {
             cache.underscore_regex = Some(
                 Regex::new(r"^([A-Z0-9]+)_([A-Z0-9]+)$")
-                    .map_err(|e| ConversionError::ParseError(format!("下划线正则编译失败: {}", e)))?
+                    .map_err(|e| ConversionError::ParseError(format!("下划线正则编译失败: {e}")))?
             );
         }
         
         if cache.slash_regex.is_none() {
             cache.slash_regex = Some(
                 Regex::new(r"^([A-Z0-9]+)/([A-Z0-9]+)$")
-                    .map_err(|e| ConversionError::ParseError(format!("斜杠正则编译失败: {}", e)))?
+                    .map_err(|e| ConversionError::ParseError(format!("斜杠正则编译失败: {e}")))?
             );
         }
         
         if cache.hyphen_regex.is_none() {
             cache.hyphen_regex = Some(
                 Regex::new(r"^([A-Z0-9]+)-([A-Z0-9]+)$")
-                    .map_err(|e| ConversionError::ParseError(format!("连字符正则编译失败: {}", e)))?
+                    .map_err(|e| ConversionError::ParseError(format!("连字符正则编译失败: {e}")))?
             );
         }
         
@@ -208,7 +191,7 @@ impl SymbolConverter {
             // 无分隔符格式的正则比较复杂，需要智能识别
             cache.no_separator_regex = Some(
                 Regex::new(r"^([A-Z0-9]{2,10})([A-Z0-9]{3,6})$")
-                    .map_err(|e| ConversionError::ParseError(format!("无分隔符正则编译失败: {}", e)))?
+                    .map_err(|e| ConversionError::ParseError(format!("无分隔符正则编译失败: {e}")))?
             );
         }
         
@@ -246,7 +229,7 @@ impl SymbolConverter {
             }
         }
         
-        Err(ConversionError::InvalidFormat(format!("无法识别符号格式: {}", symbol)))
+        Err(ConversionError::InvalidFormat(format!("无法识别符号格式: {symbol}")))
     }
 
     /// 解析符号信息
@@ -262,11 +245,11 @@ impl SymbolConverter {
             SymbolFormat::Hyphen => self.parse_with_separator(&symbol_upper, '-').await?,
             SymbolFormat::NoSeparator => self.parse_no_separator(&symbol_upper).await?,
             SymbolFormat::Custom(ref pattern) => {
-                return Err(ConversionError::UnsupportedFormat(format!("自定义格式暂不支持: {}", pattern)));
+                return Err(ConversionError::UnsupportedFormat(format!("自定义格式暂不支持: {pattern}")));
             }
         };
         
-        let normalized_symbol = format!("{}_{}", base, quote);
+        let normalized_symbol = format!("{base}_{quote}");
         
         debug!("[SymbolConverter] 解析符号: {} -> {}_{} (格式: {:?}, 耗时: {}μs)", 
                symbol, base, quote, format, start_time.elapsed().as_micros());
@@ -295,7 +278,7 @@ impl SymbolConverter {
         
         if base.is_empty() || quote.is_empty() {
             return Err(ConversionError::ParseError(
-                format!("符号 {} 解析后基础货币或报价货币为空", symbol)
+                format!("符号 {symbol} 解析后基础货币或报价货币为空")
             ));
         }
         
@@ -330,7 +313,7 @@ impl SymbolConverter {
                     let quote = &symbol[symbol.len() - quote_len..];
                     
                     if base.len() >= 2 && quote.len() >= 3 {
-                        debug!("[SymbolConverter] 启发式解析: {} -> {}_{}", symbol, base, quote);
+                        debug!("[SymbolConverter] 启发式解析: {symbol} -> {base}_{quote}");
                         return Ok((base.to_string(), quote.to_string()));
                     }
                 }
@@ -338,7 +321,7 @@ impl SymbolConverter {
         }
         
         Err(ConversionError::ParseError(
-            format!("无法解析无分隔符符号: {}", symbol)
+            format!("无法解析无分隔符符号: {symbol}")
         ))
     }
 
@@ -478,7 +461,7 @@ impl SymbolConverter {
             SymbolFormat::NoSeparator => self.convert_to_no_separator_format(symbol).await,
             SymbolFormat::Hyphen => self.convert_to_hyphen_format(symbol).await,
             SymbolFormat::Custom(ref pattern) => {
-                Err(ConversionError::UnsupportedFormat(format!("自定义格式暂不支持: {}", pattern)))
+                Err(ConversionError::UnsupportedFormat(format!("自定义格式暂不支持: {pattern}")))
             }
         }
     }
@@ -502,7 +485,7 @@ impl SymbolConverter {
     /// 从缓存获取
     async fn get_from_cache(&self, symbol: &str, format: &str) -> Option<String> {
         let cache = self.symbol_cache.read().await;
-        let key = format!("{}-{}", symbol, format);
+        let key = format!("{symbol}-{format}");
         
         if let Some(exchange_map) = cache.standard_to_exchange.get(&key) {
             if let Some(converted) = exchange_map.get("default") {
@@ -522,7 +505,7 @@ impl SymbolConverter {
             self.evict_cache_entries(&mut cache).await;
         }
         
-        let key = format!("{}-{}", symbol, format);
+        let key = format!("{symbol}-{format}");
         
         cache.standard_to_exchange
             .entry(key.clone())
@@ -547,7 +530,7 @@ impl SymbolConverter {
             cache.usage_count.remove(key);
         }
         
-        debug!("[SymbolConverter] 清理缓存，移除 {} 个条目", remove_count);
+        debug!("[SymbolConverter] 清理缓存，移除 {remove_count} 个条目");
     }
 
     /// 清空缓存

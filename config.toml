@@ -144,3 +144,48 @@ enable_multi_hop_arbitrage = true
 enable_adaptive_slippage = true
 enable_circuit_breakers = true
 enable_simd_json = true
+
+[data_collector]
+market_data_channel_buffer = 8192
+trade_event_channel_buffer = 4096
+batch_write_buffer_size = 128
+flush_interval_ms = 1000
+force_flush_threshold = 256
+max_pending_records = 16384
+
+[data_collector.sink]
+sink_type = "file"
+
+[data_collector.sink.file]
+data_dir = "./data"
+batch_size = 128
+flush_interval_ms = 1000
+rotation_size_bytes = 104857600  # 100MB
+enable_compression = false
+
+# Kafka Sink配置示例（可选）
+# [data_collector.sink.kafka]
+# brokers = ["localhost:9092"]
+# topic_prefix = "crossfury"
+# batch_size = 1000
+# flush_interval_ms = 5000
+# compression = "gzip"
+
+# ClickHouse Sink配置示例（可选）
+# [data_collector.sink.clickhouse]
+# url = "http://localhost:8123"
+# database = "market_data"
+# username = "default"
+# password = ""
+# batch_size = 1000
+# flush_interval_ms = 5000
+
+# S3 Sink配置示例（可选）
+# [data_collector.sink.s3]
+# bucket = "market-data-bucket"
+# prefix = "crossfury/"
+# region = "us-east-1"
+# access_key_id = "your_access_key"
+# secret_access_key = "your_secret_key"
+# batch_size = 1000
+# flush_interval_ms = 10000

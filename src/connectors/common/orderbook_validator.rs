@@ -1,9 +1,8 @@
 //! 订单簿验证器
 //! 实现WebSocket优化重构方案中的数据处理增强功能
 
-use std::collections::BTreeMap;
 use std::time::{Duration, SystemTime};
-use log::{debug, warn, error};
+use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 use rust_decimal::Decimal;
 use crate::exchange_types::StandardOrderBook as OrderBook;
@@ -257,7 +256,7 @@ impl OrderbookValidator {
         
         // 检查时间戳是否有效（大于0且不为默认值）
         if orderbook_timestamp <= 0 {
-            debug!("[OrderbookValidator] 无效时间戳 {}, 使用当前时间", orderbook_timestamp);
+            debug!("[OrderbookValidator] 无效时间戳 {orderbook_timestamp}, 使用当前时间");
             return current_time;
         }
 
@@ -459,10 +458,9 @@ impl OrderbookValidator {
         } else if abs_time_diff > 5000 { // 5秒延迟警告
             warnings.push(ValidationWarning {
                 warning_type: ValidationWarningType::DataDelay,
-                message: format!("数据延迟: {}ms", abs_time_diff),
+                message: format!("数据延迟: {abs_time_diff}ms"),
                 details: Some(format!(
-                    "orderbook_timestamp: {}, current_time: {}", 
-                    orderbook_timestamp, current_time
+                    "orderbook_timestamp: {orderbook_timestamp}, current_time: {current_time}"
                 )),
             });
         }
@@ -574,7 +572,7 @@ impl OrderbookValidator {
                     warning_type: ValidationWarningType::UnusualQuantity,
                     message: format!("买单数量异常大: {}, 最大值: {}", 
                                    quantity_decimal, self.config.max_order_quantity),
-                    details: Some(format!("price: {}, level: {}", price_decimal, i)),
+                    details: Some(format!("price: {price_decimal}, level: {i}")),
                 });
             }
             
@@ -612,7 +610,7 @@ impl OrderbookValidator {
                     warning_type: ValidationWarningType::UnusualQuantity,
                     message: format!("卖单数量异常大: {}, 最大值: {}", 
                                    quantity_decimal, self.config.max_order_quantity),
-                    details: Some(format!("price: {}, level: {}", price_decimal, i)),
+                    details: Some(format!("price: {price_decimal}, level: {i}")),
                 });
             }
             
@@ -647,7 +645,7 @@ impl OrderbookValidator {
         if best_bid >= best_ask {
             errors.push(ValidationError {
                 error_type: ValidationErrorType::PriceRange,
-                message: format!("价格交叉: 最佳买价{} >= 最佳卖价{}", best_bid, best_ask),
+                message: format!("价格交叉: 最佳买价{best_bid} >= 最佳卖价{best_ask}"),
                 price: None,
                 quantity: None,
                 level_index: None,
@@ -675,9 +673,8 @@ impl OrderbookValidator {
         } else if spread_percent > self.config.max_spread_percent * 0.8 {
             warnings.push(ValidationWarning {
                 warning_type: ValidationWarningType::LargeSpread,
-                message: format!("价差较大: {:.4}%", spread_percent),
-                details: Some(format!("best_bid: {}, best_ask: {}, spread: {}", 
-                                    best_bid, best_ask, spread)),
+                message: format!("价差较大: {spread_percent:.4}%"),
+                details: Some(format!("best_bid: {best_bid}, best_ask: {best_ask}, spread: {spread}")),
             });
         }
     }
@@ -730,7 +727,7 @@ impl OrderbookValidator {
             if !seen_prices.insert(price_decimal) {
                 errors.push(ValidationError {
                     error_type: ValidationErrorType::DuplicatePrice,
-                    message: format!("{}重复价格: {}", side, price_decimal),
+                    message: format!("{side}重复价格: {price_decimal}"),
                     price: Some(price_decimal),
                     quantity: None,
                     level_index: Some(i),

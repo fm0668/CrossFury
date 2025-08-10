@@ -2,7 +2,8 @@
 
 use super::{DataSink, SinkType};
 use super::file_sink::{FileSink, FileSinkConfig};
-use crate::core::AppError;
+use crate::types::errors::AppError;
+use crate::config::SinkConfiguration;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -11,11 +12,11 @@ use std::collections::HashMap;
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum SinkConfig {
     File {
-        file_path: String,
+        data_dir: String,
         batch_size: Option<usize>,
         flush_interval_ms: Option<u64>,
-        rotation_size_mb: Option<u64>,
-        compression: Option<bool>,
+        rotation_size_bytes: Option<u64>,
+        enable_compression: Option<bool>,
     },
     Kafka {
         brokers: String,
@@ -56,9 +57,9 @@ impl SinkConfig {
     /// 验证配置
     pub fn validate(&self) -> Result<(), AppError> {
         match self {
-            SinkConfig::File { file_path, .. } => {
-                if file_path.is_empty() {
-                    return Err(AppError::ConfigError("文件路径不能为空".to_string()));
+            SinkConfig::File { data_dir, .. } => {
+                if data_dir.is_empty() {
+                    return Err(AppError::ConfigError("数据目录不能为空".to_string()));
                 }
             },
             SinkConfig::Kafka { brokers, topic, .. } => {
@@ -97,25 +98,52 @@ impl SinkConfig {
 pub struct SinkFactory;
 
 impl SinkFactory {
-    /// 创建Sink实例
+    /// 从主配置文件的SinkConfiguration创建Sink实例
+    pub fn create_sink_from_config(config: &SinkConfiguration) -> Result<Box<dyn DataSink>, AppError> {
+        match config.sink_type.as_str() {
+            "file" => {
+                if let Some(file_config) = &config.file {
+                    let sink = FileSink::new(file_config.clone())?;
+                    Ok(Box::new(sink))
+                } else {
+                    Err(AppError::ConfigError("文件Sink配置缺失".to_string()))
+                }
+            },
+            "kafka" => {
+                // TODO: 实现Kafka Sink
+                Err(AppError::ConfigError("Kafka Sink尚未实现".to_string()))
+            },
+            "clickhouse" => {
+                // TODO: 实现ClickHouse Sink
+                Err(AppError::ConfigError("ClickHouse Sink尚未实现".to_string()))
+            },
+            "s3" => {
+                // TODO: 实现S3 Sink
+                Err(AppError::ConfigError("S3 Sink尚未实现".to_string()))
+            },
+            _ => Err(AppError::ConfigError(format!("不支持的Sink类型: {}", config.sink_type)))
+        }
+    }
+    
+    /// 创建Sink实例（使用工厂内部配置格式）
     pub fn create_sink(config: SinkConfig) -> Result<Box<dyn DataSink>, AppError> {
         // 验证配置
         config.validate()?;
         
         match config {
             SinkConfig::File {
-                file_path,
+                data_dir,
                 batch_size,
                 flush_interval_ms,
-                rotation_size_mb,
-                compression,
+                rotation_size_bytes,
+                enable_compression,
             } => {
                 let file_config = FileSinkConfig {
-                    file_path,
-                    batch_size: batch_size.unwrap_or(1000),
-                    flush_interval_ms: flush_interval_ms.unwrap_or(5000),
-                    rotation_size_mb,
-                    compression: compression.unwrap_or(false),
+                    data_dir,
+                    batch_size: batch_size.unwrap_or(128),
+                    flush_interval_ms: flush_interval_ms.unwrap_or(1000),
+                    rotation_size_bytes,
+                    enable_compression: enable_compression.unwrap_or(false),
                 };
                 
                 let sink = FileSink::new(file_config)?;
@@ -170,11 +198,11 @@ impl SinkFactory {
 impl Default for SinkConfig {
     fn default() -> Self {
         SinkConfig::File {
-            file_path: "data/market_data.jsonl".to_string(),
-            batch_size: Some(1000),
-            flush_interval_ms: Some(5000),
-            rotation_size_mb: Some(100),
-            compression: Some(false),
+            data_dir: "./data".to_string(),
+            batch_size: Some(128),
+            flush_interval_ms: Some(1000),
+            rotation_size_bytes: Some(100 * 1024 * 1024), // 100MB
+            enable_compression: Some(false),
         }
     }
 }
@@ -188,21 +216,21 @@ mod tests {
     fn test_sink_config_validation() {
         // 测试有效的文件配置
         let valid_config = SinkConfig::File {
-            file_path: "/tmp/test.jsonl".to_string(),
+            data_dir: "/tmp".to_string(),
             batch_size: Some(1000),
             flush_interval_ms: Some(5000),
-            rotation_size_mb: None,
-            compression: Some(false),
+            rotation_size_bytes: None,
+            enable_compression: Some(false),
         };
         assert!(valid_config.validate().is_ok());
         
         // 测试无效的文件配置
         let invalid_config = SinkConfig::File {
-            file_path: "".to_string(),
+            data_dir: "".to_string(),
             batch_size: Some(1000),
             flush_interval_ms: Some(5000),
-            rotation_size_mb: None,
-            compression: Some(false),
+            rotation_size_bytes: None,
+            enable_compression: Some(false),
         };
         assert!(invalid_config.validate().is_err());
     }
@@ -211,11 +239,11 @@ mod tests {
     fn test_sink_factory_create_file_sink() {
         let temp_file = NamedTempFile::new().unwrap();
         let config = SinkConfig::File {
-            file_path: temp_file.path().to_string_lossy().to_string(),
+            data_dir: temp_file.path().parent().unwrap().to_string_lossy().to_string(),
             batch_size: Some(500),
             flush_interval_ms: Some(3000),
-            rotation_size_mb: None,
-            compression: Some(false),
+            rotation_size_bytes: None,
+            enable_compression: Some(false),
         };
         
         let sink = SinkFactory::create_sink(config);
@@ -232,23 +260,23 @@ mod tests {
     #[test]
     fn test_sink_config_serialization() {
         let config = SinkConfig::File {
-            file_path: "/tmp/test.jsonl".to_string(),
+            data_dir: "/tmp".to_string(),
             batch_size: Some(1000),
             flush_interval_ms: Some(5000),
-            rotation_size_mb: Some(100),
-            compression: Some(false),
+            rotation_size_bytes: Some(100 * 1024 * 1024),
+            enable_compression: Some(false),
         };
         
         // 测试序列化
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("file"));
-        assert!(json.contains("/tmp/test.jsonl"));
+        assert!(json.contains("/tmp"));
         
         // 测试反序列化
         let deserialized: SinkConfig = serde_json::from_str(&json).unwrap();
         match deserialized {
-            SinkConfig::File { file_path, .. } => {
-                assert_eq!(file_path, "/tmp/test.jsonl");
+            SinkConfig::File { data_dir, .. } => {
+                assert_eq!(data_dir, "/tmp");
             },
             _ => panic!("反序列化类型错误"),
         }

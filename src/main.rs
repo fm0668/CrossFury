@@ -13,7 +13,7 @@ use trifury::cross_exchange::{
     find_multi_hop_arbitrage_opportunities
 };
 use trifury::{
-    get_normalized_cross_exchange_symbols, PriceData, AppError
+    get_normalized_cross_exchange_symbols, PriceData
 };
 use trifury::process_mapped_cross_exchange_arbitrage_subset;
 use trifury::utils::ensure_exchange_prefix;
@@ -78,7 +78,7 @@ fn simple_distribute_symbols(symbols: Vec<String>, max_connections: usize) -> Ve
 }
 
 #[tokio::main]
-async fn main() -> Result<(), AppError> {
+async fn main() -> Result<(), trifury::types::errors::AppError> {
     // Load configuration from file
     match init_config("config.toml").await {
         Ok(_) => info!("Configuration loaded successfully"),
@@ -325,7 +325,7 @@ async fn main() -> Result<(), AppError> {
     
     if perpetual_products.is_empty() {
         error!("Failed to get perpetual product data. Check API endpoint and connection.");
-        return Err(AppError::Other("Failed to get perpetual product data".to_string()));
+        return Err(crate::types::errors::AppError::Other("Failed to get perpetual product data".to_string()));
     }
 
     // Generate symbols lists for each exchange

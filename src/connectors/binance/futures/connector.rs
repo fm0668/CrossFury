@@ -9,7 +9,7 @@ use crate::connectors::binance::futures::message_parser::*;
 use crate::connectors::common::advanced_connection::{EmergencyPingManager, AdaptiveTimeoutManager};
 use crate::types::market_data::*;
 use crate::types::trading::{*, TimeInForce as TradingTimeInForce, PositionSide as TradingPositionSide};
-use crate::core::AppError;
+use crate::types::errors::AppError;
 
 // 导入核心Trait和标准化类型
 use crate::connectors::traits::ExchangeConnector;
@@ -24,7 +24,6 @@ use async_trait::async_trait;
 pub type Result<T> = std::result::Result<T, AppError>;
 
 use tokio::sync::{mpsc, RwLock};
-use futures_util::StreamExt;
 use std::sync::Arc;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -525,7 +524,7 @@ impl BinanceFuturesConnector {
     pub async fn execute_emergency_ping(&self) -> Result<()> {
         if let Some(ws_sink) = self.ws_handler.get_ws_sink().await {
             self.emergency_ping_manager.execute_emergency_ping(&ws_sink).await
-                .map_err(|e| AppError::ConnectionError(format!("紧急ping失败: {}", e)))?;
+                .map_err(|e| AppError::ConnectionError(format!("紧急ping失败: {e}")))?;
         }
         Ok(())
     }
@@ -537,7 +536,7 @@ impl BinanceFuturesConnector {
         // 如果响应时间过长，触发紧急ping
         if response_time > std::time::Duration::from_secs(10) {
             if let Err(e) = self.execute_emergency_ping().await {
-                log::warn!("紧急ping执行失败: {}", e);
+                log::warn!("紧急ping执行失败: {e}");
             }
         }
     }
@@ -597,13 +596,13 @@ impl ExchangeConnector for BinanceFuturesConnector {
         Err(ConnectorError::ConnectionError("WebSocket断开需要重构以支持内部可变性".to_string()))
     }
     
-    async fn subscribe_orderbook(&self, symbol: &str) -> std::result::Result<(), ConnectorError> {
+    async fn subscribe_orderbook(&self, _symbol: &str) -> std::result::Result<(), ConnectorError> {
         // 由于trait要求&self，但ws_handler需要&mut，这里需要使用内部可变性
         // 暂时返回未实现错误，需要重构ws_handler使用内部可变性
         Err(ConnectorError::SubscriptionError("订阅功能需要重构以支持内部可变性".to_string()))
     }
     
-    async fn subscribe_trades(&self, symbol: &str) -> std::result::Result<(), ConnectorError> {
+    async fn subscribe_trades(&self, _symbol: &str) -> std::result::Result<(), ConnectorError> {
         // 由于trait要求&self，但ws_handler需要&mut，这里需要使用内部可变性
         // 暂时返回未实现错误，需要重构ws_handler使用内部可变性
         Err(ConnectorError::SubscriptionError("订阅功能需要重构以支持内部可变性".to_string()))
@@ -616,7 +615,7 @@ impl ExchangeConnector for BinanceFuturesConnector {
                 *self.listen_key.write().await = Some(listen_key);
                 Ok(())
             }
-            Err(e) => Err(ConnectorError::SubscriptionError(format!("用户数据流订阅失败: {}", e)))
+            Err(e) => Err(ConnectorError::SubscriptionError(format!("用户数据流订阅失败: {e}")))
         }
     }
     
@@ -667,18 +666,20 @@ impl ExchangeConnector for BinanceFuturesConnector {
         };
         
         // 调用REST客户端下单方法
-        match self.rest_client.new_order(
-            &local_order.symbol,
-            &local_order.side,
-            &local_order.order_type,
-            local_order.quantity,
-            local_order.price,
-            local_order.time_in_force.as_deref(),
-            local_order.reduce_only,
-            local_order.close_position,
-            local_order.position_side.as_deref(),
-            local_order.client_order_id.as_deref(),
-        ).await {
+        let params = crate::connectors::binance::futures::rest_api::NewOrderParams {
+            symbol: &local_order.symbol,
+            side: &local_order.side,
+            order_type: &local_order.order_type,
+            quantity: local_order.quantity,
+            price: local_order.price,
+            time_in_force: local_order.time_in_force.as_deref(),
+            reduce_only: local_order.reduce_only,
+            close_position: local_order.close_position,
+            position_side: local_order.position_side.as_deref(),
+            client_order_id: local_order.client_order_id.as_deref(),
+        };
+        
+        match self.rest_client.new_order(params).await {
             Ok(response) => {
                 // 解析响应并转换为标准格式
                 let order_id = response.get("orderId")
@@ -711,14 +712,14 @@ impl ExchangeConnector for BinanceFuturesConnector {
                         .unwrap_or_else(|| chrono::Utc::now().timestamp_millis() as u64),
                 })
             }
-            Err(e) => Err(ConnectorError::TradingError(format!("下单失败: {}", e)))
+            Err(e) => Err(ConnectorError::TradingError(format!("下单失败: {e}")))
         }
     }
     
     async fn cancel_order(&self, order_id: &str, symbol: &str) -> std::result::Result<bool, ConnectorError> {
         match self.rest_client.cancel_order(symbol, Some(order_id.parse().unwrap_or(0)), None).await {
             Ok(_) => Ok(true),
-            Err(e) => Err(ConnectorError::TradingError(format!("取消订单失败: {}", e)))
+            Err(e) => Err(ConnectorError::TradingError(format!("取消订单失败: {e}")))
         }
     }
     
@@ -755,7 +756,7 @@ impl ExchangeConnector for BinanceFuturesConnector {
                         .unwrap_or_else(|| chrono::Utc::now().timestamp_millis() as u64),
                 })
             }
-            Err(e) => Err(ConnectorError::TradingError(format!("查询订单状态失败: {}", e)))
+            Err(e) => Err(ConnectorError::TradingError(format!("查询订单状态失败: {e}")))
         }
     }
     
@@ -793,7 +794,7 @@ impl ExchangeConnector for BinanceFuturesConnector {
                     balances: std::collections::HashMap::new(), // 空的详细余额映射
                 })
             }
-            Err(e) => Err(ConnectorError::TradingError(format!("获取账户余额失败: {}", e)))
+            Err(e) => Err(ConnectorError::TradingError(format!("获取账户余额失败: {e}")))
         }
     }
     

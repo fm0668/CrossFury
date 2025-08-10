@@ -45,6 +45,12 @@ debug_*.rs
 .env.local
 .env.production
 
+# API configuration files (contains sensitive keys)
+api_config.toml
+api_keys.toml
+*.key
+*.secret
+
 # Output files
 *.csv
 *.json.bak

@@ -60,6 +60,24 @@ pub enum SystemEvent {
         reason: String,
         timestamp: SystemTime,
     },
+    /// 连接器初始化事件
+    ConnectorInitialized {
+        connector_id: String,
+        exchange: ExchangeType,
+        market_type: MarketType,
+    },
+    /// 连接器连接事件
+    ConnectorConnected {
+        connector_id: String,
+        exchange: ExchangeType,
+        market_type: MarketType,
+    },
+    /// 连接器断开事件
+    ConnectorDisconnected {
+        connector_id: String,
+        exchange: ExchangeType,
+        market_type: MarketType,
+    },
 }
 
 /// 高频数据

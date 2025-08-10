@@ -198,6 +198,19 @@ pub static DEFAULT_CONFIG: Lazy<Config> = Lazy::new(|| Config {
         flush_interval_ms: 1000,            // 每秒强制刷写一次
         force_flush_threshold: 256,         // 超过256条立即刷写
         max_pending_records: 16384,         // 最大16K待写入记录（防止内存溢出）
+        sink: SinkConfiguration {
+            sink_type: "file".to_string(),
+            file: Some(FileSinkConfig {
+                data_dir: "./data".to_string(),
+                batch_size: 128,
+                flush_interval_ms: 1000,
+                rotation_size_bytes: Some(100 * 1024 * 1024), // 100MB
+                enable_compression: false,
+            }),
+            kafka: None,
+            clickhouse: None,
+            s3: None,
+        },
     },
 });
 
@@ -296,4 +309,87 @@ pub struct DataCollectorConfig {
     pub force_flush_threshold: usize,
     /// 写入队列最大长度（防止内存溢出）
     pub max_pending_records: usize,
+    /// Sink配置
+    pub sink: SinkConfiguration,
+}
+
+/// Sink配置
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SinkConfiguration {
+    /// Sink类型（file, kafka, clickhouse, s3）
+    pub sink_type: String,
+    /// 文件Sink配置
+    pub file: Option<FileSinkConfig>,
+    /// Kafka Sink配置
+    pub kafka: Option<KafkaSinkConfig>,
+    /// ClickHouse Sink配置
+    pub clickhouse: Option<ClickHouseSinkConfig>,
+    /// S3 Sink配置
+    pub s3: Option<S3SinkConfig>,
+}
+
+/// 文件Sink配置
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct FileSinkConfig {
+    /// 数据目录
+    pub data_dir: String,
+    /// 批处理大小
+    pub batch_size: usize,
+    /// 刷新间隔（毫秒）
+    pub flush_interval_ms: u64,
+    /// 文件轮转大小（字节）
+    pub rotation_size_bytes: Option<u64>,
+    /// 文件压缩
+    pub enable_compression: bool,
+}
+
+/// Kafka Sink配置
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct KafkaSinkConfig {
+    /// Kafka broker地址
+    pub brokers: Vec<String>,
+    /// Topic前缀
+    pub topic_prefix: String,
+    /// 批处理大小
+    pub batch_size: usize,
+    /// 刷新间隔（毫秒）
+    pub flush_interval_ms: u64,
+    /// 压缩类型
+    pub compression: Option<String>,
+}
+
+/// ClickHouse Sink配置
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ClickHouseSinkConfig {
+    /// 数据库URL
+    pub url: String,
+    /// 数据库名
+    pub database: String,
+    /// 用户名
+    pub username: String,
+    /// 密码
+    pub password: String,
+    /// 批处理大小
+    pub batch_size: usize,
+    /// 刷新间隔（毫秒）
+    pub flush_interval_ms: u64,
+}
+
+/// S3 Sink配置
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct S3SinkConfig {
+    /// S3 bucket名称
+    pub bucket: String,
+    /// 对象前缀
+    pub prefix: String,
+    /// AWS区域
+    pub region: String,
+    /// 访问密钥ID
+    pub access_key_id: String,
+    /// 秘密访问密钥
+    pub secret_access_key: String,
+    /// 批处理大小
+    pub batch_size: usize,
+    /// 刷新间隔（毫秒）
+    pub flush_interval_ms: u64,
 }

@@ -8,7 +8,6 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::time::{Duration, Instant};
 use log::{debug, warn};
-use chrono::Utc;
 
 /// 缓存条目
 #[derive(Debug, Clone)]
@@ -321,6 +320,7 @@ impl Default for MarketDataCache {
 mod tests {
     use super::*;
     use tokio::time::{sleep, Duration};
+    use chrono::Utc;
     
     #[tokio::test]
     async fn test_cache_basic_operations() {

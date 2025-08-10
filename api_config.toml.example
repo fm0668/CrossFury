@@ -1,0 +1,81 @@
+# CrossFury 交易所API配置文件示例
+# 请复制此文件为 api_config.toml 并填入真实的API密钥
+# 注意：api_config.toml 已在 .gitignore 中，不会被提交到仓库
+
+[binance]
+# Binance API 配置
+api_key = "your_binance_api_key_here"
+secret_key = "your_binance_secret_key_here"
+# API 基础URL（正式网）
+base_url = "https://api.binance.com"
+
+[binance.futures]
+# Binance 期货API配置
+api_key = "your_binance_futures_api_key_here"
+secret_key = "your_binance_futures_secret_key_here"
+# API 基础URL（正式网）
+base_url = "https://fapi.binance.com"
+
+[lbank]
+# LBank API 配置
+api_key = "your_lbank_api_key_here"
+secret_key = "your_lbank_secret_key_here"
+base_url = "https://api.lbank.info"
+
+[bybit]
+# Bybit API 配置
+api_key = "your_bybit_api_key_here"
+secret_key = "your_bybit_secret_key_here"
+# API 基础URL（正式网）
+base_url = "https://api.bybit.com"
+
+[okx]
+# OKX API 配置（预留）
+api_key = "your_okx_api_key_here"
+secret_key = "your_okx_secret_key_here"
+passphrase = "your_okx_passphrase_here"
+base_url = "https://www.okx.com"
+
+[huobi]
+# 火币API配置（预留）
+api_key = "your_huobi_api_key_here"
+secret_key = "your_huobi_secret_key_here"
+base_url = "https://api.huobi.pro"
+
+# 全局配置
+[global]
+# 默认请求超时时间（秒）
+request_timeout = 30
+# 默认重试次数
+max_retries = 3
+# 是否启用API限流保护
+enable_rate_limiting = true
+# 日志级别（debug, info, warn, error）
+log_level = "info"
+
+# 风险管理配置
+[risk_management]
+# 是否启用风险管理
+enable = true
+# 最大单笔订单金额（USDT）
+max_order_amount = 1000.0
+# 最大持仓金额（USDT）
+max_position_amount = 10000.0
+# 每日最大交易次数
+max_daily_trades = 100
+
+# 通知配置
+[notifications]
+# 是否启用通知
+enable = false
+# 钉钉机器人Webhook（可选）
+dingtalk_webhook = "https://oapi.dingtalk.com/robot/send?access_token=your_token"
+# 企业微信机器人Webhook（可选）
+wechat_webhook = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=your_key"
+# 邮件通知配置（可选）
+[notifications.email]
+smtp_server = "smtp.gmail.com"
+smtp_port = 587
+username = "your_email@gmail.com"
+password = "your_app_password"
+to_addresses = ["admin@yourcompany.com"]

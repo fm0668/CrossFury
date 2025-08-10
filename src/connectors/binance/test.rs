@@ -2,18 +2,21 @@
 //! 测试Binance连接器的各项功能
 
 mod tests {
-    use super::super::adapter::BinanceAdapter;
-    use super::super::config::BinanceConfig;
-    use crate::connectors::traits::ExchangeConnector;
-    use crate::core::AppState;
-    use crate::types::{
-        common::DataType,
-        config::{HealthStatus, ConnectionStatus},
-        exchange::ExchangeType,
-        orders::{OrderRequest, OrderSide, OrderType, TimeInForce},
-    };
     use std::sync::Arc;
     use log::info;
+    use crate::core::AppState;
+    use crate::connectors::binance::BinanceAdapter;
+    use crate::connectors::traits::ExchangeConnector;
+    use crate::types::common::DataType;
+    use crate::types::config::ConnectionStatus;
+    use crate::types::exchange::ExchangeType;
+    use crate::types::orders::{OrderRequest, OrderSide, OrderType, TimeInForce};
+    use super::super::config::BinanceConfig;
+    
+    
+    
+    
+    
 
     /// 创建测试用的Binance配置
     /// 优先使用生产环境，确保实盘连接的稳定性

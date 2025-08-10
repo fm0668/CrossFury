@@ -389,7 +389,7 @@ impl AlgoTradingEngine {
             let child_order = OrderRequest {
                  symbol: symbol.clone(),
                  exchange: ExchangeType::BinanceFutures,
-                 side: side,
+                 side,
                  order_type: if limit_price.is_some() { OrderType::Limit } else { OrderType::Market },
                  quantity: slice_quantity,
                  price: limit_price,
@@ -489,7 +489,7 @@ impl AlgoTradingEngine {
             let child_order = OrderRequest {
                  symbol: symbol.clone(),
                  exchange: ExchangeType::BinanceFutures,
-                 side: side,
+                 side,
                  order_type: if limit_price.is_some() { OrderType::Limit } else { OrderType::Market },
                  quantity: current_slice,
                  price: limit_price,
@@ -631,7 +631,7 @@ impl AlgoTradingEngine {
         let stop_order = OrderRequest {
              symbol: symbol.clone(),
              exchange: ExchangeType::BinanceFutures,
-             side: side,
+             side,
              order_type: OrderType::Market,
              quantity: total_quantity,
              price: None,
@@ -728,7 +728,7 @@ impl AlgoTradingEngine {
         let triggered_order = OrderRequest {
              symbol: symbol.clone(),
              exchange: ExchangeType::BinanceFutures,
-             side: side,
+             side,
              order_type: if limit_price.is_some() { OrderType::Limit } else { OrderType::Market },
              quantity: total_quantity,
              price: limit_price,
@@ -915,7 +915,10 @@ impl SmartRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
     use std::sync::atomic::{AtomicU64, Ordering};
+    use crate::types::exchange::ExchangeType;
+    use crate::types::orders::{OrderRequest, OrderSide, OrderType, TimeInForce, PositionSide};
     
     // 模拟订单执行器
     struct MockOrderExecutor {
@@ -942,7 +945,7 @@ mod tests {
         }
         
         async fn get_order_status(&self, _order_id: &str) -> Result<OrderStatus, String> {
-            Ok(OrderStatus::Filled)
+            Ok(crate::types::trading::OrderStatus::Filled)
         }
     }
     
