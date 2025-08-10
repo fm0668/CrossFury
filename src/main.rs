@@ -29,7 +29,7 @@ use trifury::{
 // use trifury::connectors::bybit::futures::BybitFuturesConnector;
 // use trifury::connectors::okx::futures::OkxFuturesConnector;
 use trifury::config::{Config, init_config, get_config};
-use trifury::error_handling::{init_error_tracker, record_error};
+use trifury::error_handling::{init_error_tracker};
 
 
 /// Build exchange fees map from configuration
@@ -65,6 +65,7 @@ fn build_exchange_fees_from_config() -> std::collections::HashMap<trifury::excha
 }
 
 /// Simple function to distribute symbols across connections
+#[allow(dead_code)]
 fn simple_distribute_symbols(symbols: Vec<String>, max_connections: usize) -> Vec<Vec<String>> {
     if symbols.is_empty() || max_connections == 0 {
         return vec![];
@@ -397,7 +398,7 @@ async fn main() -> Result<(), AppError> {
         .unwrap();
 
     // Track WebSocket handles
-    let websocket_runtime_handle = websocket_runtime.handle().clone();
+    let _websocket_runtime_handle = websocket_runtime.handle().clone();
     let scanner_handle = scanner_runtime.handle().clone();
     let mut websocket_tasks = Vec::new();
     let mut scanner_tasks = Vec::new();
@@ -796,6 +797,7 @@ async fn main() -> Result<(), AppError> {
     }
 
     /// Helper function to evenly distribute symbols across connections with maximum per chunk
+    #[allow(dead_code)]
     fn distribute_even_chunks(symbols: &[String], num_chunks: usize, max_per_chunk: usize) -> Vec<Vec<String>> {
         if symbols.is_empty() || num_chunks == 0 {
             return Vec::new();

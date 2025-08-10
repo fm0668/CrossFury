@@ -97,7 +97,7 @@ impl ExchangeConnector for BinanceAdapter {
             let mut ping_manager = self.emergency_ping_manager.write().await;
             ping_manager.reset().await;
             
-            let mut timeout_manager = self.adaptive_timeout_manager.write().await;
+            let timeout_manager = self.adaptive_timeout_manager.write().await;
             timeout_manager.reset().await;
         }
         
@@ -533,7 +533,7 @@ impl BinanceAdapter {
     
     /// 重置超时管理器
     pub async fn reset_timeout_manager(&self) {
-        let mut timeout_manager = self.adaptive_timeout_manager.write().await;
+        let timeout_manager = self.adaptive_timeout_manager.write().await;
         timeout_manager.reset().await;
     }
 }

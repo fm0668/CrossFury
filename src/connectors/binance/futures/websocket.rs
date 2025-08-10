@@ -31,11 +31,11 @@ pub struct BinanceFuturesWebSocketHandler {
     /// WebSocket写入端
     ws_sink: Option<Arc<Mutex<SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>>>>,
     /// 数据发送通道
-    data_sender: Option<mpsc::UnboundedSender<MarketDataEvent>>,
+    data_sender: Option<mpsc::Sender<MarketDataEvent>>,
     /// 交易事件发送通道
-    trade_sender: Option<mpsc::UnboundedSender<TradeEvent>>,
+    trade_sender: Option<mpsc::Sender<TradeEvent>>,
     /// 账户事件发送通道
-    account_sender: Option<mpsc::UnboundedSender<AccountEvent>>,
+    account_sender: Option<mpsc::Sender<AccountEvent>>,
     /// 订阅管理
     subscriptions: Arc<RwLock<HashMap<String, SubscriptionInfo>>>,
     /// 连接状态
@@ -174,17 +174,17 @@ impl BinanceFuturesWebSocketHandler {
     }
     
     /// 设置数据发送通道
-    pub fn set_data_sender(&mut self, sender: mpsc::UnboundedSender<MarketDataEvent>) {
+    pub fn set_data_sender(&mut self, sender: mpsc::Sender<MarketDataEvent>) {
         self.data_sender = Some(sender);
     }
     
     /// 设置交易事件发送通道
-    pub fn set_trade_sender(&mut self, sender: mpsc::UnboundedSender<TradeEvent>) {
+    pub fn set_trade_sender(&mut self, sender: mpsc::Sender<TradeEvent>) {
         self.trade_sender = Some(sender);
     }
     
     /// 设置账户事件发送通道
-    pub fn set_account_sender(&mut self, sender: mpsc::UnboundedSender<AccountEvent>) {
+    pub fn set_account_sender(&mut self, sender: mpsc::Sender<AccountEvent>) {
         self.account_sender = Some(sender);
     }
     
@@ -555,10 +555,10 @@ impl BinanceFuturesWebSocketHandler {
     /// 处理WebSocket消息
     async fn process_message(
         text: &str,
-        data_sender: &Option<mpsc::UnboundedSender<MarketDataEvent>>,
-        _trade_sender: &Option<mpsc::UnboundedSender<TradeEvent>>,
-        _account_sender: &Option<mpsc::UnboundedSender<AccountEvent>>,
-        _subscriptions: &Arc<RwLock<HashMap<String, SubscriptionInfo>>>,
+        data_sender: &Option<mpsc::Sender<MarketDataEvent>>,
+        trade_sender: &Option<mpsc::Sender<TradeEvent>>,
+        account_sender: &Option<mpsc::Sender<AccountEvent>>,
+        subscriptions: &Arc<RwLock<HashMap<String, SubscriptionInfo>>>,
     ) -> Result<()> {
         debug!("收到WebSocket消息: {text}");
         
@@ -579,21 +579,44 @@ impl BinanceFuturesWebSocketHandler {
                     debug!("处理深度数据: {data:?}");
                     Self::process_depth_data(stream, data, data_sender).await?;
                 } else if stream.contains("@aggTrade") {
-                    // TODO: 处理交易数据
+                    debug!("处理交易数据: {data:?}");
+                    Self::process_trade_data(stream, data, trade_sender).await?;
                 } else if stream.contains("@kline") {
                     // TODO: 处理K线数据
                 } else if stream.contains("@ticker") {
                     // TODO: 处理24小时价格统计
+                } else if stream.contains("@openInterest") {
+                    debug!("处理持仓量数据: {data:?}");
+                    Self::process_open_interest_data(stream, data, data_sender).await?;
+                } else if stream == "!markPrice@arr" {
+                    debug!("处理资金费率数组数据: {data:?}");
+                    Self::process_funding_rate_array_data(data, data_sender).await?;
                 } else if stream.contains("@markPrice") {
-                    // TODO: 处理标记价格
+                    debug!("处理标记价格数据: {data:?}");
+                    Self::process_mark_price_data(stream, data, data_sender).await?;
                 }
             }
         } else {
-            // 可能是直接的深度数据格式
-            debug!("检查是否为直接深度数据格式: {msg:?}");
-            if msg.get("e").and_then(|e| e.as_str()) == Some("depthUpdate") {
-                debug!("处理直接深度更新数据");
-                Self::process_direct_depth_data(&msg, data_sender).await?;
+            // 处理直接事件格式
+            debug!("检查是否为直接事件格式: {msg:?}");
+            if let Some(event_type) = msg.get("e").and_then(|e| e.as_str()) {
+                match event_type {
+                    "depthUpdate" => {
+                        debug!("处理直接深度更新数据");
+                        Self::process_direct_depth_data(&msg, data_sender).await?;
+                    }
+                    "aggTrade" => {
+                        debug!("处理直接交易数据");
+                        Self::process_direct_trade_data(&msg, trade_sender).await?;
+                    }
+                    "markPriceUpdate" => {
+                        debug!("处理直接标记价格数据");
+                        Self::process_direct_mark_price_data(&msg, data_sender).await?;
+                    }
+                    _ => {
+                        debug!("未知事件类型: {event_type}");
+                    }
+                }
             }
         }
         
@@ -604,7 +627,7 @@ impl BinanceFuturesWebSocketHandler {
     async fn process_depth_data(
         stream: &str,
         data: &Value,
-        data_sender: &Option<mpsc::UnboundedSender<MarketDataEvent>>,
+        data_sender: &Option<mpsc::Sender<MarketDataEvent>>,
     ) -> Result<()> {
         if let Some(sender) = data_sender {
             // 解析交易对名称
@@ -657,7 +680,7 @@ impl BinanceFuturesWebSocketHandler {
             
             let market_event = MarketDataEvent::DepthUpdate(depth_update);
             
-            if let Err(e) = sender.send(market_event) {
+            if let Err(e) = sender.send(market_event).await {
                 error!("发送深度数据失败: {e:?}");
             }
         }
@@ -668,7 +691,7 @@ impl BinanceFuturesWebSocketHandler {
     /// 处理直接深度数据格式
     async fn process_direct_depth_data(
         data: &Value,
-        data_sender: &Option<mpsc::UnboundedSender<MarketDataEvent>>,
+        data_sender: &Option<mpsc::Sender<MarketDataEvent>>,
     ) -> Result<()> {
         if let Some(sender) = data_sender {
             // 解析交易对名称
@@ -729,10 +752,238 @@ impl BinanceFuturesWebSocketHandler {
             
             let market_event = MarketDataEvent::DepthUpdate(depth_update);
             
-            if let Err(e) = sender.send(market_event) {
+            if let Err(e) = sender.send(market_event).await {
                 error!("发送深度数据失败: {e:?}");
             } else {
                 debug!("成功发送深度数据: {bids_len} bids, {asks_len} asks");
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// 处理交易数据
+    async fn process_trade_data(
+        stream: &str,
+        data: &Value,
+        trade_sender: &Option<mpsc::Sender<TradeEvent>>,
+    ) -> Result<()> {
+        if let Some(sender) = trade_sender {
+            // 解析交易对名称
+            let symbol = stream.split('@').next().unwrap_or("").to_uppercase();
+            
+            // 解析交易数据
+            let price = data.get("p").and_then(|p| p.as_str()).unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+            let quantity = data.get("q").and_then(|q| q.as_str()).unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+            let trade_id = data.get("a").and_then(|a| a.as_i64()).unwrap_or(0).to_string();
+            let timestamp = data.get("T").and_then(|t| t.as_i64()).unwrap_or(Utc::now().timestamp_millis());
+            let is_buyer_maker = data.get("m").and_then(|m| m.as_bool()).unwrap_or(false);
+            
+            let side = if is_buyer_maker {
+                crate::types::trading::OrderSide::Sell // 买方是挂单方，说明这是卖单成交
+            } else {
+                crate::types::trading::OrderSide::Buy // 买方是吃单方，说明这是买单成交
+            };
+            
+            let trade_execution = crate::types::trading::TradeExecution {
+                symbol: symbol.clone(),
+                trade_id,
+                order_id: "0".to_string(), // WebSocket交易数据中没有订单ID
+                side,
+                quantity,
+                price,
+                commission: 0.0, // WebSocket交易数据中没有手续费信息
+                commission_asset: "USDT".to_string(),
+                timestamp: timestamp as u64,
+                is_maker: is_buyer_maker,
+            };
+            
+            let trade_event = TradeEvent::TradeExecution(trade_execution);
+            
+            if let Err(e) = sender.send(trade_event).await {
+                error!("发送交易数据失败: {e:?}");
+            } else {
+                debug!("成功发送交易数据: {symbol} {price}@{quantity}");
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// 处理标记价格数据
+    async fn process_mark_price_data(
+        stream: &str,
+        data: &Value,
+        data_sender: &Option<mpsc::Sender<MarketDataEvent>>,
+    ) -> Result<()> {
+        if let Some(sender) = data_sender {
+            // 解析交易对名称
+            let symbol = stream.split('@').next().unwrap_or("").to_uppercase();
+            
+            // 解析标记价格数据
+            let mark_price = data.get("p").and_then(|p| p.as_str()).unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+            let index_price = data.get("i").and_then(|i| i.as_str()).unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+            let funding_rate = data.get("r").and_then(|r| r.as_str()).unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+            let next_funding_time = data.get("T").and_then(|t| t.as_i64()).unwrap_or(0);
+            
+            let mark_price_update = crate::types::market_data::MarkPriceUpdate {
+                symbol: symbol.clone(),
+                mark_price,
+                index_price,
+                funding_rate,
+                next_funding_time,
+            };
+            
+            let market_event = MarketDataEvent::MarkPriceUpdate(mark_price_update);
+            
+            if let Err(e) = sender.send(market_event).await {
+                error!("发送标记价格数据失败: {e:?}");
+            } else {
+                debug!("成功发送标记价格数据: {symbol} mark_price={mark_price}");
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// 处理持仓量（未平仓合约）数据
+    async fn process_open_interest_data(
+        stream: &str,
+        data: &Value,
+        data_sender: &Option<mpsc::Sender<MarketDataEvent>>,
+    ) -> Result<()> {
+        if let Some(sender) = data_sender {
+            // 从流名解析交易对
+            let symbol = stream.split('@').next().unwrap_or("").to_uppercase();
+            
+            // 解析持仓量与时间
+            let open_interest = data.get("o").and_then(|o| o.as_str()).unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+            let timestamp = data.get("E").and_then(|t| t.as_i64()).unwrap_or(Utc::now().timestamp_millis());
+            
+            let oi_update = crate::types::market_data::OpenInterestUpdate {
+                symbol: symbol.clone(),
+                open_interest,
+                timestamp,
+            };
+            
+            let market_event = MarketDataEvent::OpenInterestUpdate(oi_update);
+            if let Err(e) = sender.send(market_event).await {
+                error!("发送未平仓合约数据失败: {e:?}");
+            } else {
+                debug!("成功发送未平仓合约数据: {symbol} open_interest={open_interest}");
+            }
+        }
+        Ok(())
+    }
+
+    /// 处理资金费率数组数据（!markPrice@arr）
+    async fn process_funding_rate_array_data(
+        data: &Value,
+        data_sender: &Option<mpsc::Sender<MarketDataEvent>>,
+    ) -> Result<()> {
+        if let Some(sender) = data_sender {
+            if let Some(items) = data.as_array() {
+                for item in items {
+                    let symbol = item.get("s").and_then(|s| s.as_str()).unwrap_or("").to_string();
+                    let funding_rate = item.get("r").and_then(|r| r.as_str()).unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+                    let funding_time = item.get("T").and_then(|t| t.as_i64()).unwrap_or(0);
+                    
+                    let fr_update = crate::types::market_data::FundingRateUpdate {
+                        symbol: symbol.clone(),
+                        funding_rate,
+                        funding_time,
+                    };
+                    
+                    let market_event = MarketDataEvent::FundingRateUpdate(fr_update);
+                    if let Err(e) = sender.send(market_event).await {
+                        error!("发送资金费率数据失败: {e:?}");
+                    } else {
+                        debug!("成功发送资金费率数据: {symbol} funding_rate={funding_rate}");
+                    }
+                }
+            } else {
+                debug!("资金费率数组数据格式不正确: {data:?}");
+            }
+        }
+        Ok(())
+    }
+
+    /// 处理直接交易数据格式
+    async fn process_direct_trade_data(
+        data: &Value,
+        trade_sender: &Option<mpsc::Sender<TradeEvent>>,
+    ) -> Result<()> {
+        if let Some(sender) = trade_sender {
+            // 解析交易对名称
+            let symbol = data.get("s").and_then(|s| s.as_str()).unwrap_or("").to_string();
+            
+            // 解析交易数据
+            let price = data.get("p").and_then(|p| p.as_str()).unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+            let quantity = data.get("q").and_then(|q| q.as_str()).unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+            let trade_id = data.get("a").and_then(|a| a.as_i64()).unwrap_or(0).to_string();
+            let timestamp = data.get("T").and_then(|t| t.as_i64()).unwrap_or(Utc::now().timestamp_millis());
+            let is_buyer_maker = data.get("m").and_then(|m| m.as_bool()).unwrap_or(false);
+            
+            let side = if is_buyer_maker {
+                crate::types::trading::OrderSide::Sell // 买方是挂单方，说明这是卖单成交
+            } else {
+                crate::types::trading::OrderSide::Buy // 买方是吃单方，说明这是买单成交
+            };
+            
+            let trade_execution = crate::types::trading::TradeExecution {
+                symbol: symbol.clone(),
+                trade_id,
+                order_id: "0".to_string(), // WebSocket交易数据中没有订单ID
+                side,
+                quantity,
+                price,
+                commission: 0.0, // WebSocket交易数据中没有手续费信息
+                commission_asset: "USDT".to_string(),
+                timestamp: timestamp as u64,
+                is_maker: is_buyer_maker,
+            };
+            
+            let trade_event = TradeEvent::TradeExecution(trade_execution);
+            
+            if let Err(e) = sender.send(trade_event).await {
+                error!("发送直接交易数据失败: {e:?}");
+            } else {
+                debug!("成功发送直接交易数据: {symbol} {price}@{quantity}");
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// 处理直接标记价格数据格式
+    async fn process_direct_mark_price_data(
+        data: &Value,
+        data_sender: &Option<mpsc::Sender<MarketDataEvent>>,
+    ) -> Result<()> {
+        if let Some(sender) = data_sender {
+            // 解析交易对名称
+            let symbol = data.get("s").and_then(|s| s.as_str()).unwrap_or("").to_string();
+            
+            // 解析标记价格数据
+            let mark_price = data.get("p").and_then(|p| p.as_str()).unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+            let index_price = data.get("i").and_then(|i| i.as_str()).unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+            let funding_rate = data.get("r").and_then(|r| r.as_str()).unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+            let next_funding_time = data.get("T").and_then(|t| t.as_i64()).unwrap_or(0);
+            
+            let mark_price_update = crate::types::market_data::MarkPriceUpdate {
+                symbol: symbol.clone(),
+                mark_price,
+                index_price,
+                funding_rate,
+                next_funding_time,
+            };
+            
+            let market_event = MarketDataEvent::MarkPriceUpdate(mark_price_update);
+            
+            if let Err(e) = sender.send(market_event).await {
+                error!("发送直接标记价格数据失败: {e:?}");
+            } else {
+                debug!("成功发送直接标记价格数据: {symbol} mark_price={mark_price}");
             }
         }
         

@@ -222,7 +222,7 @@ impl BinanceFuturesConfigBuilder {
     }
     
     pub fn default_leverage(mut self, leverage: u8) -> Self {
-        self.config.default_leverage = leverage.min(125).max(1);
+        self.config.default_leverage = leverage.clamp(1, 125);
         self
     }
     
@@ -250,7 +250,7 @@ impl BinanceFuturesConfigBuilder {
     }
     
     pub fn symbol_leverage(mut self, symbol: String, leverage: u8) -> Self {
-        self.config.symbol_leverage.insert(symbol, leverage.min(125).max(1));
+        self.config.symbol_leverage.insert(symbol, leverage.clamp(1, 125));
         self
     }
     

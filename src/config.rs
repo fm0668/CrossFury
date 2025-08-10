@@ -48,6 +48,7 @@ pub async fn init_config<P: AsRef<Path>>(path: P) -> Result<(), String> {
         .map_err(|_| "Configuration already initialized".to_string())
 }
 
+/// Config 系统添加数据采集器配置
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
     pub general: GeneralConfig,
@@ -58,6 +59,7 @@ pub struct Config {
     pub features: FeatureFlags,
     pub websocket_optimization: WebSocketOptimizationConfig,
     pub advanced_connectors: HashMap<String, AdvancedConnectorConfig>,
+    pub data_collector: DataCollectorConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -189,6 +191,14 @@ pub static DEFAULT_CONFIG: Lazy<Config> = Lazy::new(|| Config {
         packet_loss_threshold: 0.05,
     },
     advanced_connectors: HashMap::new(),
+    data_collector: DataCollectorConfig {
+        market_data_channel_buffer: 8192,   // 8K 市场数据缓冲区 
+        trade_event_channel_buffer: 4096,   // 4K 交易事件缓冲区
+        batch_write_buffer_size: 128,       // 每批次写入128条记录
+        flush_interval_ms: 1000,            // 每秒强制刷写一次
+        force_flush_threshold: 256,         // 超过256条立即刷写
+        max_pending_records: 16384,         // 最大16K待写入记录（防止内存溢出）
+    },
 });
 
 impl Config {
@@ -269,4 +279,21 @@ impl Config {
         self.websocket_optimization.enable_adaptive_timeout ||
         self.websocket_optimization.enable_batch_subscription
     }
+}
+
+/// 数据采集器配置
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DataCollectorConfig {
+    /// 市场数据通道缓冲区大小（有界通道）
+    pub market_data_channel_buffer: usize,
+    /// 交易事件通道缓冲区大小（有界通道）
+    pub trade_event_channel_buffer: usize,
+    /// 批量写入缓冲区大小
+    pub batch_write_buffer_size: usize,
+    /// 定时刷写间隔（毫秒）
+    pub flush_interval_ms: u64,
+    /// 强制刷写阈值（超过此数量立即刷写）
+    pub force_flush_threshold: usize,
+    /// 写入队列最大长度（防止内存溢出）
+    pub max_pending_records: usize,
 }

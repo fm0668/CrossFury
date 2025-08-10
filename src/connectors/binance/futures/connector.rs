@@ -43,11 +43,11 @@ pub struct BinanceFuturesConnector {
     /// 消息解析器
     message_parser: BinanceFuturesMessageParser,
     /// 市场数据发送通道
-    market_data_sender: Option<mpsc::UnboundedSender<MarketDataEvent>>,
+    market_data_sender: Option<mpsc::Sender<MarketDataEvent>>,
     /// 交易事件发送通道
-    trade_event_sender: Option<mpsc::UnboundedSender<TradeEvent>>,
+    trade_event_sender: Option<mpsc::Sender<TradeEvent>>,
     /// 账户事件发送通道
-    account_event_sender: Option<mpsc::UnboundedSender<AccountEvent>>,
+    account_event_sender: Option<mpsc::Sender<AccountEvent>>,
     /// 连接状态
     connection_state: Arc<RwLock<ConnectionState>>,
     /// 订阅状态
@@ -160,19 +160,19 @@ impl BinanceFuturesConnector {
     }
     
     /// 设置市场数据发送通道
-    pub fn set_market_data_sender(&mut self, sender: mpsc::UnboundedSender<MarketDataEvent>) {
+    pub fn set_market_data_sender(&mut self, sender: mpsc::Sender<MarketDataEvent>) {
         self.market_data_sender = Some(sender.clone());
         self.ws_handler.set_data_sender(sender);
     }
     
     /// 设置交易事件发送通道
-    pub fn set_trade_event_sender(&mut self, sender: mpsc::UnboundedSender<TradeEvent>) {
+    pub fn set_trade_event_sender(&mut self, sender: mpsc::Sender<TradeEvent>) {
         self.trade_event_sender = Some(sender.clone());
         self.ws_handler.set_trade_sender(sender);
     }
     
     /// 设置账户事件发送通道
-    pub fn set_account_event_sender(&mut self, sender: mpsc::UnboundedSender<AccountEvent>) {
+    pub fn set_account_event_sender(&mut self, sender: mpsc::Sender<AccountEvent>) {
         self.account_event_sender = Some(sender.clone());
         self.ws_handler.set_account_sender(sender);
     }
@@ -190,6 +190,14 @@ impl BinanceFuturesConnector {
                 *self.connection_state.write().await = ConnectionState::Connected;
                 *self.last_heartbeat.write().await = Utc::now();
                 info!("Binance期货WebSocket连接成功");
+                
+                // 启动消息处理循环
+                if let Err(e) = self.ws_handler.start_message_loop().await {
+                    let error_msg = format!("启动消息处理循环失败: {e}");
+                    *self.connection_state.write().await = ConnectionState::Error(error_msg.clone());
+                    return Err(AppError::ConnectionError(error_msg));
+                }
+                info!("Binance期货WebSocket消息处理循环已启动");
             }
             Err(e) => {
                 let error_msg = format!("WebSocket连接失败: {e}");
@@ -213,7 +221,11 @@ impl BinanceFuturesConnector {
         
         // 订阅配置中指定的交易对
         let symbols = self.config.subscribed_symbols.clone();
-        for symbol in &symbols {
+        for (i, symbol) in symbols.iter().enumerate() {
+            if i > 0 {
+                // 在不同交易对订阅之间添加延迟，避免速率限制
+                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+            }
             if let Err(e) = self.subscribe_symbol_data(symbol).await {
                 warn!("订阅{symbol}数据失败: {e}");
             }
@@ -261,12 +273,15 @@ impl BinanceFuturesConnector {
         
         // 订阅深度数据
         self.ws_handler.subscribe_depth(symbol, Some(20)).await?;
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
         
         // 订阅交易数据
         self.ws_handler.subscribe_trades(symbol).await?;
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
         
         // 订阅24小时价格统计
         self.ws_handler.subscribe_ticker(symbol).await?;
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
         
         // 订阅标记价格
         self.ws_handler.subscribe_mark_price(symbol).await?;
@@ -315,6 +330,11 @@ impl BinanceFuturesConnector {
     /// 订阅资金费率
     pub async fn subscribe_funding_rates(&mut self) -> Result<()> {
         self.ws_handler.subscribe_funding_rate().await
+    }
+    
+    /// 订阅未平仓合约数据
+    pub async fn subscribe_open_interest(&mut self, symbol: &str) -> Result<()> {
+        self.ws_handler.subscribe_open_interest(symbol).await
     }
     
     /// 获取活跃订阅列表

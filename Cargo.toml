@@ -35,28 +35,8 @@ regex = "1.10"
 rust_decimal = "1.33"
 
 [[bin]]
-name = "test_binance_adapter"
-path = "test_binance_adapter.rs"
-
-[[bin]]
-name = "test_binance_websocket"
-path = "test_binance_websocket.rs"
-
-[[bin]]
-name = "test_binance_rest"
-path = "test_binance_rest.rs"
-
-[[bin]]
-name = "test_simple_websocket"
-path = "test_simple_websocket.rs"
-
-[[bin]]
-name = "test_depth_processing"
-path = "test_depth_processing.rs"
-
-[[bin]]
-name = "test_enhanced_depth"
-path = "test_enhanced_depth.rs"
+name = "binance_data_collector"
+path = "src/bin/binance_data_collector.rs"
 
 
 

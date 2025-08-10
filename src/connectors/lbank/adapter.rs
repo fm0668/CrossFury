@@ -449,6 +449,6 @@ impl LBankConnector {
     /// 重置超时管理器
     pub async fn reset_timeout_manager(&self) {
         let mut timeout_manager = self.adaptive_timeout_manager.write().await;
-        timeout_manager.reset();
+        timeout_manager.reset().await;
     }
 }

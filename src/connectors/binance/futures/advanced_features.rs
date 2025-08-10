@@ -862,7 +862,11 @@ impl SmartRouter {
     pub async fn route_order(&self, order: OrderRequest) -> Result<String, String> {
         let best_connector = self.select_best_connector(&order).await?;
         
-        info!("路由订单到: {} - {} {} {}", best_connector, order.symbol, format!("{:?}", order.side), order.quantity);
+        info!("路由订单到: {best_connector} - {symbol} {side:?} {quantity}",
+            symbol = order.symbol,
+            side = order.side,
+            quantity = order.quantity,
+        );
         
         let start_time = Instant::now();
         let result = self.connectors[&best_connector].submit_order(order).await;
