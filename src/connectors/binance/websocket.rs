@@ -20,6 +20,7 @@ use super::spot::BinanceSpotConnector;
 /// 
 /// 管理WebSocket连接生命周期和消息处理
 pub struct BinanceWebSocketHandler {
+    #[allow(dead_code)]
     config: BinanceConfig,
     spot_connector: Arc<BinanceSpotConnector>,
     connection_status: Arc<RwLock<ConnectionStatus>>,

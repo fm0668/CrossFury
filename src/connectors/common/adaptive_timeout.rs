@@ -118,8 +118,10 @@ impl AdaptiveTimeoutManager {
     /// 创建新的自适应超时管理器
     pub fn new(config: AdaptiveTimeoutConfig) -> Self {
         let initial_timeout = Duration::from_millis(config.base_timeout_ms);
-        let mut state = AdaptiveTimeoutState::default();
-        state.current_timeout = initial_timeout;
+        let state = AdaptiveTimeoutState {
+            current_timeout: initial_timeout,
+            ..Default::default()
+        };
         
         Self {
             config,
@@ -340,8 +342,10 @@ impl AdaptiveTimeoutManager {
     pub async fn reset(&self) {
         let mut state = self.state.write().await;
         let initial_timeout = Duration::from_millis(self.config.base_timeout_ms);
-        *state = AdaptiveTimeoutState::default();
-        state.current_timeout = initial_timeout;
+        *state = AdaptiveTimeoutState {
+            current_timeout: initial_timeout,
+            ..Default::default()
+        };
         
         info!("[AdaptiveTimeout] 状态已重置，超时时间恢复至: {}ms", self.config.base_timeout_ms);
     }

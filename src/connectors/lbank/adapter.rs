@@ -33,6 +33,7 @@ use super::websocket::LBankWebSocketHandler;
 /// 实现ExchangeConnector trait，提供标准化的交易所连接接口
 #[derive(Clone)]
 pub struct LBankConnector {
+    #[allow(dead_code)]
     config: ConnectorConfig,
     app_state: Arc<AppState>,
     websocket_handler: LBankWebSocketHandler,

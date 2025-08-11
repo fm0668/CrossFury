@@ -18,7 +18,10 @@ pub mod binance;
 // pub mod bybit;
 // pub mod okx;
 
-// 预留管理器和工厂
+// 管理器模块
+pub mod managers;
+
+// 预留其他管理器和工厂
 // pub mod manager;
 // pub mod factory;
 // pub mod data_flow_manager;

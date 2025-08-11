@@ -218,7 +218,7 @@ impl ConnectionQualityMonitor {
         let packet_stability = (1.0 - packet_loss_rate * 10.0).max(0.0);
         
         // 综合评分
-        (latency_stability * 0.7 + packet_stability * 0.3).min(1.0).max(0.0)
+        (latency_stability * 0.7 + packet_stability * 0.3).clamp(0.0, 1.0)
     }
     
     /// 重置统计数据
@@ -265,8 +265,8 @@ impl AdaptiveTimeoutManager {
         let mut current = self.current_timeout.write().await;
         
         // 基于延迟和稳定性调整超时
-        let latency_factor = (quality.latency_ms / 100.0).max(0.5).min(3.0);
-        let stability_factor = (2.0 - quality.stability_score).max(1.0).min(2.0);
+        let latency_factor = (quality.latency_ms / 100.0).clamp(0.5, 3.0);
+        let stability_factor = (2.0 - quality.stability_score).clamp(1.0, 2.0);
         
         let new_timeout_ms = (self.base_timeout.as_millis() as f64 
             * latency_factor 

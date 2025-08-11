@@ -27,6 +27,7 @@ use super::websocket::BinanceWebSocketHandler;
 #[derive(Clone)]
 pub struct BinanceAdapter {
     config: BinanceConfig,
+    #[allow(dead_code)]
     spot_connector: Arc<RwLock<Option<BinanceSpotConnector>>>,
     websocket_handler: Arc<RwLock<Option<BinanceWebSocketHandler>>>,
     connection_status: Arc<RwLock<ConnectionStatus>>,
@@ -325,7 +326,7 @@ impl ExchangeConnector for BinanceAdapter {
     async fn subscribe_batch(
         &self, 
         symbols: Vec<String>, 
-        batch_size: usize
+        _batch_size: usize
     ) -> Result<BatchSubscriptionResult, ConnectorError> {
         info!("[Binance] 批量订阅: {} 个符号", symbols.len());
         

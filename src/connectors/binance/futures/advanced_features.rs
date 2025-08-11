@@ -937,7 +937,7 @@ mod tests {
     impl OrderExecutor for MockOrderExecutor {
         async fn submit_order(&self, _order: OrderRequest) -> Result<String, String> {
             let order_id = self.order_counter.fetch_add(1, Ordering::SeqCst);
-            Ok(format!("mock_order_{}", order_id))
+            Ok(format!("mock_order_{order_id}"))
         }
         
         async fn cancel_order(&self, _order_id: &str) -> Result<(), String> {

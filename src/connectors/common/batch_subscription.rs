@@ -74,6 +74,7 @@ pub struct SubscriptionRequest {
 
 /// 批次信息
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct BatchInfo {
     /// 批次ID
     pub batch_id: String,
@@ -89,6 +90,7 @@ struct BatchInfo {
 
 /// 批次状态
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
 enum BatchStatus {
     Pending,
     Processing,
@@ -585,7 +587,7 @@ impl BatchSubscriptionManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::time::sleep;
+    // use tokio::time::sleep; // 暂时注释掉未使用的导入
 
     #[tokio::test]
     async fn test_batch_subscription_manager_creation() {
