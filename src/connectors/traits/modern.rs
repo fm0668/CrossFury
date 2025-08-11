@@ -12,7 +12,6 @@ use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
 use tokio::sync::{mpsc, broadcast};
 
-use crate::types::*;
 use crate::types::common::{ExchangeType, MarketType};
 use crate::types::config::{BatchSubscriptionResult, SubscriptionStatus, ConnectionQuality};
 use crate::types::events::SystemEvent;

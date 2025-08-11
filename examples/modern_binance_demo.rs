@@ -34,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // 2. 验证配置
     println!("📋 验证配置...");
-    config.validate().map_err(|e| format!("配置验证失败: {}", e))?;
+    config.validate().map_err(|e| format!("配置验证失败: {e}"))?;
     println!("✅ 配置验证通过");
     
     // 3. 创建重连策略
@@ -71,7 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // 7. 检查连接状态
     let status = connector.connection_status().await;
-    println!("🔗 连接状态: {:?}", status);
+    println!("🔗 连接状态: {status:?}");
     
     // 8. 订阅市场数据
     println!("📡 订阅市场数据...");
@@ -84,7 +84,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     match connector.subscribe(subscription_config).await {
         Ok(_) => println!("✅ 订阅成功"),
-        Err(e) => println!("❌ 订阅失败: {}", e),
+        Err(e) => println!("❌ 订阅失败: {e}"),
     }
     
     // 9. 获取事件流并处理事件
@@ -98,27 +98,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             event_count += 1;
             match event {
                 SystemEvent::ConnectorInitialized { connector_id, .. } => {
-                    println!("🎉 连接器已初始化: {}", connector_id);
+                    println!("🎉 连接器已初始化: {connector_id}");
                 },
                 SystemEvent::ConnectorConnected { connector_id, .. } => {
-                    println!("🔗 连接器已连接: {}", connector_id);
+                    println!("🔗 连接器已连接: {connector_id}");
                 },
                 SystemEvent::ConnectorDisconnected { connector_id, .. } => {
-                    println!("🔌 连接器已断开: {}", connector_id);
+                    println!("🔌 连接器已断开: {connector_id}");
                 },
                 SystemEvent::Subscription { exchange, market_type, symbol, subscribed, .. } => {
                     println!("📡 订阅更新 [{:?}-{:?}]: {} -> {}", exchange, market_type, symbol, if subscribed { "已订阅" } else { "已取消订阅" });
                 },
                 _ => {
                     if event_count <= 10 {
-                        println!("📨 收到事件 #{}: {:?}", event_count, event);
+                        println!("📨 收到事件 #{event_count}: {event:?}");
                     }
                 }
             }
             
             // 限制事件处理数量以避免输出过多
             if event_count >= 20 {
-                println!("📊 已处理 {} 个事件，停止显示详细信息", event_count);
+                println!("📊 已处理 {event_count} 个事件，停止显示详细信息");
                 break;
             }
         }
@@ -131,19 +131,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             match connector.health_check().await {
                 Ok(health) => {
-                    println!("🏥 健康检查 #{}: {:?}", i, health);
+                    println!("🏥 健康检查 #{i}: {health:?}");
                     if !health.healthy {
                         println!("⚠️  连接器不健康: {:?}", health.errors);
                     }
                 },
                 Err(e) => {
-                    println!("❌ 健康检查失败: {}", e);
+                    println!("❌ 健康检查失败: {e}");
                 }
             }
             
             // 获取指标
             let metrics = connector.metrics().await;
-            println!("📊 连接器指标: {:?}", metrics);
+            println!("📊 连接器指标: {metrics:?}");
             
             // 获取连接质量
             match connector.connection_quality().await {
@@ -152,26 +152,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         quality.latency_ms, quality.stability_score);
                 },
                 Err(e) => {
-                    println!("❌ 获取连接质量失败: {}", e);
+                    println!("❌ 获取连接质量失败: {e}");
                 }
             }
         }
         
         // 测试订阅状态
         let subscription_status = connector.subscription_status().await;
-        println!("📡 订阅状态: {:?}", subscription_status);
+        println!("📡 订阅状态: {subscription_status:?}");
         
         // 优雅关闭
         println!("🛑 开始优雅关闭...");
         
         if let Err(e) = connector.stop().await {
-            println!("❌ 停止连接器失败: {}", e);
+            println!("❌ 停止连接器失败: {e}");
         } else {
             println!("✅ 连接器已停止");
         }
         
         if let Err(e) = connector.shutdown().await {
-            println!("❌ 关闭连接器失败: {}", e);
+            println!("❌ 关闭连接器失败: {e}");
         } else {
             println!("✅ 连接器已关闭");
         }

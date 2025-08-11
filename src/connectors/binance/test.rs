@@ -2,15 +2,15 @@
 //! 测试Binance连接器的各项功能
 
 mod tests {
-    use std::sync::Arc;
-    use log::info;
-    use crate::core::AppState;
-    use crate::connectors::binance::BinanceAdapter;
-    use crate::connectors::traits::ExchangeConnector;
-    use crate::types::common::DataType;
-    use crate::types::config::ConnectionStatus;
-    use crate::types::exchange::ExchangeType;
-    use crate::types::orders::{OrderRequest, OrderSide, OrderType, TimeInForce};
+    
+    
+    
+    
+    
+    
+    
+    
+    
     use super::super::config::BinanceConfig;
     
     

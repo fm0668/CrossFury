@@ -63,7 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  - 交易所类型: {:?}", adapter.get_exchange_type());
     println!("  - 市场类型: {:?}", adapter.get_market_type());
     let connection_status = adapter.get_connection_status().await;
-    println!("  - 连接状态: {:?}", connection_status);
+    println!("  - 连接状态: {connection_status:?}");
     println!();
     
     // 先订阅市场数据（设置要订阅的流）
