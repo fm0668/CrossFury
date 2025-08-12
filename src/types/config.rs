@@ -197,6 +197,30 @@ pub enum ConnectionQualityLevel {
 }
 
 impl ConnectionQuality {
+    /// 卓越连接质量
+    pub const EXCELLENT: ConnectionQualityLevel = ConnectionQualityLevel::Excellent;
+    #[deprecated(note = "Use EXCELLENT instead")]
+    #[allow(non_upper_case_globals)]
+    pub const Excellent: ConnectionQualityLevel = ConnectionQualityLevel::Excellent;
+    
+    /// 良好连接质量
+    pub const GOOD: ConnectionQualityLevel = ConnectionQualityLevel::Good;
+    #[deprecated(note = "Use GOOD instead")]
+    #[allow(non_upper_case_globals)]
+    pub const Good: ConnectionQualityLevel = ConnectionQualityLevel::Good;
+    
+    /// 一般连接质量
+    pub const FAIR: ConnectionQualityLevel = ConnectionQualityLevel::Fair;
+    #[deprecated(note = "Use FAIR instead")]
+    #[allow(non_upper_case_globals)]
+    pub const Fair: ConnectionQualityLevel = ConnectionQualityLevel::Fair;
+    
+    /// 差连接质量
+    pub const POOR: ConnectionQualityLevel = ConnectionQualityLevel::Poor;
+    #[deprecated(note = "Use POOR instead")]
+    #[allow(non_upper_case_globals)]
+    pub const Poor: ConnectionQualityLevel = ConnectionQualityLevel::Poor;
+    
     /// 评估连接质量等级
     pub fn assess_quality(&self) -> ConnectionQualityLevel {
         if self.latency_ms > 1000.0 || self.packet_loss_rate > 0.1 || self.stability_score < 0.3 {

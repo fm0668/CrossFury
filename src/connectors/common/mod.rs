@@ -10,6 +10,7 @@ pub mod batch_subscription;
 pub mod symbol_converter;
 pub mod orderbook_validator;
 pub mod smart_error_recovery;
+pub mod user_data_parser;
 
 // 预留通用功能模块
 // pub mod health_checker;
@@ -74,4 +75,10 @@ pub use smart_error_recovery::{
     RecoveryStrategy,
     RecoveryResult,
     RecoveryStats,
+};
+
+pub use user_data_parser::{
+    UserDataParser,
+    UserDataParseError,
+    UserDataRouter,
 };

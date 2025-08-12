@@ -50,13 +50,16 @@ pub struct BinanceFuturesWebSocketHandler {
 #[derive(Debug, Clone)]
 struct SubscriptionInfo {
     stream_name: String,
+    #[allow(dead_code)]
     symbol: String,
+    #[allow(dead_code)]
     stream_type: StreamType,
     is_active: bool,
 }
 
 /// 流类型
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 enum StreamType {
     Depth,
     Trade,

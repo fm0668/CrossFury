@@ -109,6 +109,7 @@ pub struct AlgoTradingEngine {
 
 /// 市场快照
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct MarketSnapshot {
     ticker: Ticker,
     depth: DepthUpdate,
@@ -788,7 +789,7 @@ impl Clone for AlgoTradingEngine {
 pub struct SmartRouter {
     /// 可用的交易所连接器
     connectors: HashMap<String, Arc<dyn OrderExecutor + Send + Sync>>,
-    /// 路由配置
+    #[allow(dead_code)]
     config: RouterConfig,
     /// 性能统计
     performance_stats: Arc<RwLock<HashMap<String, RouterStats>>>,

@@ -483,11 +483,8 @@ impl ModernExchangeConnector for ModernBinanceConnector {
     }
     
     async fn connect(&mut self) -> Result<(), Self::Error> {
-        // 更新状态为连接中
-        self.update_status(ModernConnectionStatus::Connecting {
-            attempt: 1,
-            started_at: Utc::now(),
-        }).await;
+        // 当设置连接中状态时，补充 attempt 字段
+        self.update_status(ModernConnectionStatus::Connecting { attempt: 0, started_at: chrono::Utc::now() }).await;
         
         // 启动WebSocket管理器
         self.websocket_manager.start().await
@@ -527,6 +524,7 @@ impl ModernExchangeConnector for ModernBinanceConnector {
         self.update_status(ModernConnectionStatus::Connected {
             connected_at: Utc::now(),
             last_heartbeat: Utc::now(),
+            attempt: 0,
         }).await;
         
         // 更新指标

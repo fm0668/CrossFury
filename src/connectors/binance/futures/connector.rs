@@ -40,6 +40,7 @@ pub struct BinanceFuturesConnector {
     /// REST API客户端
     rest_client: BinanceFuturesRestClient,
     /// 消息解析器
+    #[allow(dead_code)]
     message_parser: BinanceFuturesMessageParser,
     /// 市场数据发送通道
     market_data_sender: Option<mpsc::Sender<MarketDataEvent>>,
@@ -64,12 +65,16 @@ pub struct BinanceFuturesConnector {
     
     // ExchangeConnector trait 所需的数据流
     /// 标准化市场数据流发送端
+    #[allow(dead_code)]
     standardized_market_sender: Option<mpsc::Sender<StandardizedMessage>>,
     /// 标准化市场数据流接收端
+    #[allow(dead_code)]
     standardized_market_receiver: Option<mpsc::Receiver<StandardizedMessage>>,
     /// 标准化用户数据流发送端
+    #[allow(dead_code)]
     standardized_user_sender: Option<mpsc::Sender<StandardizedMessage>>,
     /// 标准化用户数据流接收端
+    #[allow(dead_code)]
     standardized_user_receiver: Option<mpsc::Receiver<StandardizedMessage>>,
     /// 本地订单簿缓存
     orderbook_cache: Arc<RwLock<HashMap<String, StandardizedOrderBook>>>,

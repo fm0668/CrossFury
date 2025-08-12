@@ -8,12 +8,19 @@ pub mod futures;
 pub mod adapter;
 pub mod websocket;
 pub mod test;
+pub mod enhanced_adapter;
+pub mod modern_adapter;
+pub mod health_monitor;
 
 // 重新导出主要类型
 pub use spot::BinanceSpotConnector;
 pub use futures::BinanceFuturesConnector;
 pub use adapter::BinanceAdapter;
 pub use websocket::BinanceWebSocketHandler;
+pub use enhanced_adapter::{EnhancedBinanceAdapter, EnhancedBinanceError, RetryConfig};
+pub use modern_adapter::{ModernBinanceConnector, ModernBinanceConfig};
+pub use health_monitor::{HealthMonitor, HealthCheckConfig};
+pub use crate::types::config::HealthStatus;
 
 // Binance特定的配置和常量
 pub mod config {

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use super::common::{ExchangeType, MarketType};
 use super::market_data::{StandardizedOrderBook, StandardizedTrade};
+use super::trading::{OrderSide, OrderStatus, OrderType, PositionSide};
 
 /// 系统事件
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -133,4 +134,152 @@ pub struct DataFlowStats {
     pub error_count: u64,
     /// 连接时长（秒）
     pub uptime_seconds: u64,
+}
+
+/// 余额变化原因
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum BalanceChangeReason {
+    /// 交易
+    Trade,
+    /// 资金费率
+    FundingFee,
+    /// 转账
+    Transfer,
+    /// 其他原因
+    Other(String),
+}
+
+/// 标准化订单更新
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StandardizedOrderUpdate {
+    /// 订单ID
+    pub order_id: String,
+    /// 客户端订单ID
+    pub client_order_id: Option<String>,
+    /// 交易对
+    pub symbol: String,
+    /// 订单方向
+    pub side: OrderSide,
+    /// 订单类型
+    pub order_type: OrderType,
+    /// 订单状态
+    pub status: OrderStatus,
+    /// 订单数量
+    pub quantity: f64,
+    /// 订单价格
+    pub price: Option<f64>,
+    /// 已成交数量
+    pub filled_quantity: f64,
+    /// 剩余数量
+    pub remaining_quantity: f64,
+    /// 平均成交价格
+    pub average_price: Option<f64>,
+    /// 持仓方向（期货）
+    pub position_side: Option<PositionSide>,
+    /// 只减仓（期货）
+    pub reduce_only: Option<bool>,
+    /// 创建时间
+    pub created_time: SystemTime,
+    /// 更新时间
+    pub updated_time: SystemTime,
+}
+
+/// 标准化余额更新
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StandardizedBalanceUpdate {
+    /// 资产
+    pub asset: String,
+    /// 总余额
+    pub total_balance: f64,
+    /// 可用余额
+    pub available_balance: f64,
+    /// 冻结余额
+    pub frozen_balance: f64,
+    /// 余额变化
+    pub balance_change: f64,
+    /// 变化原因
+    pub change_reason: BalanceChangeReason,
+}
+
+/// 标准化持仓更新
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StandardizedPositionUpdate {
+    /// 交易对
+    pub symbol: String,
+    /// 持仓方向
+    pub position_side: PositionSide,
+    /// 持仓数量
+    pub position_amount: f64,
+    /// 开仓价格
+    pub entry_price: f64,
+    /// 标记价格
+    pub mark_price: f64,
+    /// 未实现盈亏
+    pub unrealized_pnl: f64,
+    /// 已实现盈亏
+    pub realized_pnl: f64,
+    /// 保证金
+    pub margin: f64,
+    /// 杠杆倍数
+    pub leverage: f64,
+    /// 盈亏百分比
+    pub pnl_percentage: f64,
+}
+
+/// 标准化交易执行
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StandardizedTradeExecution {
+    /// 成交ID
+    pub trade_id: String,
+    /// 订单ID
+    pub order_id: String,
+    /// 交易对
+    pub symbol: String,
+    /// 交易方向
+    pub side: OrderSide,
+    /// 成交数量
+    pub quantity: f64,
+    /// 成交价格
+    pub price: f64,
+    /// 手续费
+    pub commission: f64,
+    /// 手续费资产
+    pub commission_asset: String,
+    /// 是否为挂单方
+    pub is_maker: bool,
+    /// 执行时间
+    pub execution_time: SystemTime,
+}
+
+/// 用户数据事件
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum UserDataEvent {
+    /// 订单更新
+    OrderUpdate {
+        exchange: ExchangeType,
+        market_type: MarketType,
+        order: StandardizedOrderUpdate,
+        timestamp: SystemTime,
+    },
+    /// 余额更新
+    BalanceUpdate {
+        exchange: ExchangeType,
+        market_type: MarketType,
+        balance: StandardizedBalanceUpdate,
+        timestamp: SystemTime,
+    },
+    /// 持仓更新
+    PositionUpdate {
+        exchange: ExchangeType,
+        market_type: MarketType,
+        position: StandardizedPositionUpdate,
+        timestamp: SystemTime,
+    },
+    /// 交易执行
+    TradeExecution {
+        exchange: ExchangeType,
+        market_type: MarketType,
+        execution: StandardizedTradeExecution,
+        timestamp: SystemTime,
+    },
 }

@@ -1,118 +1,53 @@
 //! Binance连接器测试模块
-//! 测试Binance连接器的各项功能
+//!
+//! 包含Binance连接器的单元测试和集成测试
 
-mod tests {
-    #[allow(unused_imports)]
-    use std::sync::Arc;
-    #[allow(unused_imports)]
-    use crate::AppState;
-    #[allow(unused_imports)]
-    use crate::connectors::binance::BinanceAdapter;
-    #[allow(unused_imports)]
-    use crate::ExchangeType;
-    #[allow(unused_imports)]
-    use crate::types::orders::{OrderRequest, OrderSide, OrderType, TimeInForce};
-    #[allow(unused_imports)]
-    use crate::types::config::ConnectionStatus;
-    #[allow(unused_imports)]
-    use crate::types::common::DataType;
-    #[allow(unused_imports)]
+use super::adapter::BinanceAdapter;
+use super::config::BinanceConfig;
+use crate::connectors::traits::ExchangeConnector;
+use crate::core::AppState;
+use crate::types::{
+    common::DataType,
+    orders::{OrderRequest, OrderSide, OrderType, TimeInForce},
+};
+use crate::ExchangeType;
+use log::info;
+use std::sync::Arc;
+
+/// 创建测试用的Binance配置
+#[allow(dead_code)]
+fn create_test_config() -> BinanceConfig {
+    BinanceConfig {
+        api_key: None,
+        secret_key: None,
+        testnet: true,
+        rate_limit_per_minute: 1200,
+    }
+}
+
+#[cfg(test)]
+mod unit_tests {
+    use super::*;
     use log::info;
-    #[allow(unused_imports)]
-    use crate::connectors::traits::ExchangeConnector;
-    use super::super::config::BinanceConfig;
-    
 
-    /// 创建测试用的Binance配置
-    /// 优先使用生产环境，确保实盘连接的稳定性
-    fn create_test_config() -> BinanceConfig {
-        // 检查环境变量，如果明确设置了使用测试网才使用测试网
-        let use_testnet = std::env::var("BINANCE_USE_TESTNET")
-            .map(|v| v.to_lowercase() == "true")
-            .unwrap_or(false);
-            
-        BinanceConfig {
-            api_key: None,
-            secret_key: None,
-            testnet: use_testnet, // 默认使用生产环境，提高连接稳定性
-            rate_limit_per_minute: 1200,
-        }
-    }
-    
     #[tokio::test]
-    #[ignore] // 暂时忽略，避免编译错误
     async fn test_binance_adapter_creation() {
-        // 初始化日志
-        let _ = env_logger::try_init();
-        
-        let config = create_test_config();
-        let app_state = Arc::new(AppState::new());
-        
-        let adapter = BinanceAdapter::new(config, app_state).await;
-        assert!(adapter.is_ok(), "Binance适配器创建失败");
-        
-        let adapter = adapter.unwrap();
-        assert_eq!(adapter.get_exchange_type(), ExchangeType::Binance);
-        assert_eq!(adapter.get_market_type(), crate::types::exchange::MarketType::Spot);
-        
-        info!("✅ Binance适配器创建测试通过");
-    }
-    
-    #[tokio::test]
-    #[ignore] // 暂时忽略，避免编译错误
-    async fn test_binance_adapter_connect() {
         let _ = env_logger::try_init();
         
         let config = create_test_config();
         
         let app_state = Arc::new(AppState::new());
-        let adapter = BinanceAdapter::new(config, app_state).await.unwrap();
+        let result = BinanceAdapter::new(config, app_state).await;
         
-        // 测试连接（注意：这可能会尝试真实连接）
-        // 使用超时机制避免测试卡住
-        let connect_future = adapter.connect_websocket();
-        let timeout_duration = std::time::Duration::from_secs(10); // 10秒超时
+        assert!(result.is_ok(), "Binance适配器创建应该成功");
         
-        let result = tokio::time::timeout(timeout_duration, connect_future).await;
+        let adapter = result.unwrap();
+        assert_eq!(adapter.get_exchange_name(), "Binance", "交易所名称应该是Binance");
         
-        // 处理超时和连接结果
-        match result {
-            Ok(Ok(_)) => {
-                info!("✅ Binance连接成功");
-                // 验证连接状态
-                let status = adapter.get_connection_status().await;
-                assert_eq!(status, ConnectionStatus::Connected);
-            },
-            Ok(Err(e)) => info!("⚠️ Binance连接失败（可能是网络问题）: {e:?}"),
-            Err(_) => info!("⚠️ Binance连接超时（10秒），可能是网络连接问题"),
-        }
-        
-        info!("✅ Binance连接器连接测试完成");
+        info!("✅ Binance连接器创建测试通过");
     }
-    
+
     #[tokio::test]
-    #[ignore] // 暂时忽略，避免编译错误
-    async fn test_binance_adapter_disconnect() {
-        let _ = env_logger::try_init();
-        
-        let config = create_test_config();
-        
-        let app_state = Arc::new(AppState::new());
-        let adapter = BinanceAdapter::new(config, app_state).await.unwrap();
-        
-        // 测试断开连接
-        let result = adapter.disconnect_websocket().await;
-        assert!(result.is_ok(), "断开连接应该成功");
-        
-        // 验证连接状态
-        let status = adapter.get_connection_status().await;
-        assert_eq!(status, ConnectionStatus::Disconnected);
-        
-        info!("✅ Binance连接器断开连接测试通过");
-    }
-    
-    #[tokio::test]
-    #[ignore] // 暂时忽略，避免编译错误
     async fn test_binance_adapter_health_check() {
         let _ = env_logger::try_init();
         

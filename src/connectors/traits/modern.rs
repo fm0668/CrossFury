@@ -58,6 +58,7 @@ pub enum ModernConnectionStatus {
     Connected {
         connected_at: DateTime<Utc>,
         last_heartbeat: DateTime<Utc>,
+        attempt: u32,
     },
     /// 重连中
     Reconnecting {
@@ -380,6 +381,12 @@ pub enum ConnectorFeature {
     MarketData,
     /// 用户数据流
     UserDataStream,
+    /// 用户数据
+    UserData,
+    /// 交易功能
+    Trading,
+    /// 健康检查
+    HealthCheck,
     /// 现货交易
     SpotTrading,
     /// 期货交易
@@ -532,8 +539,12 @@ pub enum MessageEvent {
 pub struct BatchIOConfig {
     /// 批量大小
     pub batch_size: usize,
+    /// 最大批量大小
+    pub max_batch_size: usize,
     /// 批量超时时间（毫秒）
     pub batch_timeout_ms: u64,
+    /// 批量延迟（毫秒）
+    pub batch_delay: u64,
     /// 最大缓冲区大小
     pub max_buffer_size: usize,
     /// 是否启用压缩
@@ -544,7 +555,9 @@ impl Default for BatchIOConfig {
     fn default() -> Self {
         Self {
             batch_size: 100,
+            max_batch_size: 1000,
             batch_timeout_ms: 1000,
+            batch_delay: 100,
             max_buffer_size: 10000,
             enable_compression: false,
         }
@@ -577,6 +590,22 @@ pub struct BatchBufferStatus {
     pub usage_percentage: f64,
     pub pending_items: usize,
     pub last_flush: Option<DateTime<Utc>>,
+    pub pending_writes: usize,
+    pub pending_reads: usize,
+    pub buffer_utilization: f64,
+    pub buffer_usage_percent: f64,
+    pub last_flush_time: Option<DateTime<Utc>>,
+}
+
+/// 批量IO统计信息
+#[derive(Debug, Clone)]
+pub struct BatchIOStats {
+    pub total_batches_processed: u64,
+    pub average_batch_size: f64,
+    pub total_processing_time_ms: u64,
+    pub average_processing_time_ms: f64,
+    pub average_processing_time: Duration,
+    pub last_batch_processed_at: Option<DateTime<Utc>>,
 }
 
 /// 有界通道配置
@@ -617,6 +646,133 @@ pub enum ChannelOverflowStrategy {
     Block,
     /// 返回错误
     Error,
+}
+
+/// 订单管理trait
+#[async_trait]
+pub trait OrderManagement: Send + Sync {
+    type Error: std::error::Error + Send + Sync + 'static;
+    
+    /// 下单
+    async fn place_order(&mut self, order: &OrderRequest) -> Result<OrderResponse, Self::Error>;
+    
+    /// 取消订单
+    async fn cancel_order(&mut self, order_id: &str, symbol: &str) -> Result<bool, Self::Error>;
+    
+    /// 获取订单状态
+    async fn get_order_status(&self, order_id: &str, symbol: &str) -> Result<OrderStatus, Self::Error>;
+    
+    /// 批量下单
+    async fn place_orders(&mut self, orders: &[OrderRequest]) -> Result<Vec<OrderResponse>, Self::Error> {
+        let mut results = Vec::new();
+        for order in orders {
+            results.push(self.place_order(order).await?);
+        }
+        Ok(results)
+    }
+}
+
+/// 账户数据提供者trait
+#[async_trait]
+pub trait AccountDataProvider: Send + Sync {
+    type Error: std::error::Error + Send + Sync + 'static;
+    
+    /// 获取账户余额
+    async fn get_account_balance(&self) -> Result<AccountBalance, Self::Error>;
+    
+    /// 获取持仓信息
+    async fn get_positions(&self) -> Result<Vec<crate::types::trading::Position>, Self::Error> {
+        Ok(Vec::new()) // 默认实现
+    }
+    
+    /// 获取交易历史
+    async fn get_trade_history(&self, symbol: Option<&str>, limit: Option<usize>) -> Result<Vec<StandardizedTrade>, Self::Error> {
+        Ok(Vec::new()) // 默认实现
+    }
+}
+
+/// 有界通道提供者trait
+pub trait BoundedChannelProvider: Send + Sync {
+    /// 获取有界通道配置
+    fn get_bounded_channel_config(&self) -> &BoundedChannelConfig;
+    
+    /// 更新有界通道配置
+    fn update_bounded_channel_config(&mut self, config: BoundedChannelConfig);
+    
+    /// 获取通道使用统计
+    fn get_channel_stats(&self) -> HashMap<String, ChannelStats>;
+}
+
+/// 通道统计信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChannelStats {
+    pub buffer_size: usize,
+    pub current_usage: usize,
+    pub usage_percentage: f64,
+    pub overflow_count: u64,
+    pub total_messages: u64,
+}
+
+/// 批量IO提供者trait（修正名称）
+#[async_trait]
+pub trait BatchIOProvider: Send + Sync {
+    type Error: std::error::Error + Send + Sync + 'static;
+    
+    /// 获取批量IO配置
+    fn get_batch_io_config(&self) -> &BatchIOConfig;
+    
+    /// 更新批量IO配置
+    fn update_batch_io_config(&mut self, config: BatchIOConfig);
+    
+    /// 刷新所有批量缓冲区
+    async fn flush_all_batches(&self) -> Result<(), Self::Error>;
+    
+    /// 获取批量统计信息
+    async fn get_batch_stats(&self) -> BatchIOStats;
+    
+    /// 获取批量缓冲区状态
+    fn get_batch_buffer_status(&self) -> BatchBufferStatus;
+}
+
+/// 交易所信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExchangeInfo {
+    pub name: String,
+    pub timezone: String,
+    pub server_time: DateTime<Utc>,
+    pub symbols: Vec<SymbolInfo>,
+    pub rate_limits: Vec<RateLimit>,
+}
+
+/// 交易对信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SymbolInfo {
+    pub symbol: String,
+    pub base_asset: String,
+    pub quote_asset: String,
+    pub status: String,
+    pub min_qty: f64,
+    pub max_qty: f64,
+    pub step_size: f64,
+    pub tick_size: f64,
+}
+
+/// 限流信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RateLimit {
+    pub rate_limit_type: String,
+    pub interval: String,
+    pub interval_num: u32,
+    pub limit: u32,
+}
+
+/// 订阅请求
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubscriptionRequest {
+    pub method: String,
+    pub params: Vec<String>,
+    pub id: Option<u64>,
+    pub request_id: String,
 }
 
 /// 现代化连接器的默认实现辅助宏

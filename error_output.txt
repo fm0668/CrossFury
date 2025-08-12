@@ -1,0 +1,228 @@
+﻿cargo :     Checking trifury v0.1.0 (E:\GF\CrossFury)
+所在位置 行:1 字符: 1
++ cargo check 2>&1 | Out-File -FilePath error_output.txt -Encoding utf8
++ ~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (    Checking tr...:\GF\CrossFury):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+error[E0425]: cannot find value `warnings` in this scope
+   --> src\connectors\common\orderbook_validator.rs:390:13
+    |
+362 |         _warnings: &mut Vec<ValidationWarning>,
+    |         --------- `_warnings` defined here
+...
+390 |             warnings.push(ValidationWarning {
+    |             ^^^^^^^^
+    |
+help: the leading underscore in `_warnings` marks it as unused, consider renaming it to `warnings`
+    |
+362 -         _warnings: &mut Vec<ValidationWarning>,
+362 +         warnings: &mut Vec<ValidationWarning>,
+    |
+
+error[E0425]: cannot find value `warnings` in this scope
+   --> src\connectors\common\orderbook_validator.rs:398:52
+    |
+362 |         _warnings: &mut Vec<ValidationWarning>,
+    |         --------- `_warnings` defined here
+...
+398 |         self.validate_timestamp(orderbook, errors, warnings);
+    |                                                    ^^^^^^^^
+    |
+help: the leading underscore in `_warnings` marks it as unused, consider renaming it to `warnings`
+    |
+362 -         _warnings: &mut Vec<ValidationWarning>,
+362 +         warnings: &mut Vec<ValidationWarning>,
+    |
+
+error[E0425]: cannot find value `warnings` in this scope
+   --> src\connectors\common\orderbook_validator.rs:459:13
+    |
+406 |         _warnings: &mut Vec<ValidationWarning>,
+    |         --------- `_warnings` defined here
+...
+459 |             warnings.push(ValidationWarning {
+    |             ^^^^^^^^
+    |
+help: the leading underscore in `_warnings` marks it as unused, consider renaming it to `warnings`
+    |
+406 -         _warnings: &mut Vec<ValidationWarning>,
+406 +         warnings: &mut Vec<ValidationWarning>,
+    |
+
+warning: unused label
+  --> src\connectors\lbank\websocket.rs:33:9
+   |
+33 |         'reconnect: loop {
+   |         ^^^^^^^^^^
+   |
+   = note: `#[warn(unused_labels)]` on by default
+
+error[E0518]: attribute should be applied to function or closure
+   --> src\cross_exchange.rs:514:1
+    |
+514 |   #[inline(always)]
+    |   ^^^^^^^^^^^^^^^^^
+515 |   /// Parameters for cross-exchange profit calculation with slippage
+516 | / pub struct CrossExchangeProfitParams<'a> {
+517 | |     pub symbol: &'a str,
+518 | |     pub buy_exchange: Exchange,
+519 | |     pub sell_exchange: Exchange,
+...   |
+524 | |     pub exchange_fees: &'a HashMap<Exchange, ExchangeFees>,
+525 | | }
+    | |_- not a function or closure
+
+warning: unused variable: `subscription`
+   --> src\connectors\traits\subscription_manager.rs:287:33
+    |
+287 |                     if let Some(subscription) = subscriptions.remove(&key) {
+    |                                 ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_subscription`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `priority`
+   --> src\connectors\traits\subscription_manager.rs:327:9
+    |
+327 |         priority: SubscriptionPriority,
+    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_priority`
+
+warning: unused variable: `url`
+   --> src\connectors\traits\websocket_manager.rs:415:9
+    |
+415 |         url: String,
+    |         ^^^ help: if this is intentional, prefix it with an underscore: `_url`
+
+warning: unused variable: `connection_id`
+   --> src\connectors\traits\websocket_manager.rs:567:43
+    |
+567 |     async fn calculate_connection_quality(connection_id: &str) -> ConnectionQuality {
+    |                                           ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_connection_id`
+
+warning: unused variable: `url`
+   --> src\connectors\traits\websocket_manager.rs:535:37
+    |
+535 |                 for (connection_id, url) in failed_connections {
+    |                                     ^^^ help: if this is intentional, prefix it with an underscore: `_url`
+
+warning: unused variable: `is_buyer_maker`
+   --> src\connectors\binance\spot.rs:152:13
+    |
+152 |         let is_buyer_maker = data.get("m")
+    |             ^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_is_buyer_maker`
+
+warning: unused variable: `account_sender`
+   --> src\connectors\binance\futures\websocket.rs:562:9
+    |
+562 |         account_sender: &Option<mpsc::Sender<AccountEvent>>,
+    |         ^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_account_sender`
+
+warning: unused variable: `subscriptions`
+   --> src\connectors\binance\futures\websocket.rs:563:9
+    |
+563 |         subscriptions: &Arc<RwLock<HashMap<String, SubscriptionInfo>>>,
+    |         ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_subscriptions`
+
+warning: unused variable: `spot_connector`
+   --> src\connectors\binance\websocket.rs:447:9
+    |
+447 |         spot_connector: &Arc<BinanceSpotConnector>,
+    |         ^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_spot_connector`
+
+warning: variable `best_bid_qty` is assigned to, but never used
+   --> src\connectors\binance\websocket.rs:510:17
+    |
+510 |         let mut best_bid_qty = 0.0;
+    |                 ^^^^^^^^^^^^
+    |
+    = note: consider using `_best_bid_qty` instead
+
+warning: value assigned to `best_bid_qty` is never read
+   --> src\connectors\binance\websocket.rs:529:29
+    |
+529 | ...                   best_bid_qty = quantity;
+    |                       ^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: variable `best_ask_qty` is assigned to, but never used
+   --> src\connectors\binance\websocket.rs:539:17
+    |
+539 |         let mut best_ask_qty = 0.0;
+    |                 ^^^^^^^^^^^^
+    |
+    = note: consider using `_best_ask_qty` instead
+
+warning: value assigned to `best_ask_qty` is never read
+   --> src\connectors\binance\websocket.rs:558:29
+    |
+558 | ...                   best_ask_qty = quantity;
+    |                       ^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: unused variable: `exchange_idx`
+   --> src\cross_exchange.rs:861:21
+    |
+861 |                 let exchange_idx = *exchange_indices
+    |                     ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_exchange_idx`
+
+warning: unused variable: `base_idx`
+   --> src\cross_exchange.rs:869:25
+    |
+869 |                     let base_idx = *symbol_indices
+    |                         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_base_idx`
+
+warning: unused variable: `quote_idx`
+   --> src\cross_exchange.rs:874:25
+    |
+874 |                     let quote_idx = *symbol_indices
+    |                         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_quote_idx`
+
+warning: unused variable: `exchange`
+    --> src\cross_exchange.rs:1110:13
+     |
+1110 |         let exchange = match exchange_str {
+     |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_exchange`
+
+warning: unused variable: `timestamp`
+    --> src\cross_exchange.rs:1121:13
+     |
+1121 |         let timestamp = data.timestamp;
+     |             ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_timestamp`
+
+warning: unused variable: `normalized`
+    --> src\cross_exchange.rs:1254:10
+     |
+1254 |     for (normalized, exchanges_and_symbols) in &normalized_map {
+     |          ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_normalized`
+
+warning: unused variable: `error`
+   --> src\error_handling.rs:166:9
+    |
+166 |         error: &AppError,
+    |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_error`
+
+warning: unused variable: `buffer_size`
+   --> src\connectors\traits\modern.rs:288:49
+    |
+288 |     async fn set_channel_buffer_size(&mut self, buffer_size: usize) -> Result<(), Self::Error> {
+    |                                                 ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_buffer_size`
+
+warning: unused variable: `order`
+   --> src\connectors\traits\modern.rs:331:37
+    |
+331 |     async fn place_order(&mut self, order: &OrderRequest) -> Result<OrderResponse, Self::Error> {
+    |                                     ^^^^^ help: if this is intentional, prefix it with an underscore: `_order`
+
+warning: unused variable: `warnings`
+   --> src\connectors\common\orderbook_validator.rs:475:9
+    |
+475 |         warnings: &mut Vec<ValidationWarning>,
+    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_warnings`
+
+Some errors have detailed explanations: E0425, E0518.
+For more information about an error, try `rustc --explain E0425`.
+warning: `trifury` (lib) generated 24 warnings
+error: could not compile `trifury` (lib) due to 4 previous errors; 24 warnings emitted

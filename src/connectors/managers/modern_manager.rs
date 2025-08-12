@@ -42,8 +42,10 @@ struct ConnectorRegistration<C> {
     /// 连接器实例
     connector: C,
     /// 注册时间
+    #[allow(dead_code)]
     registered_at: chrono::DateTime<chrono::Utc>,
     /// 是否自动启动
+    #[allow(dead_code)]
     auto_start: bool,
     /// 标签
     tags: HashMap<String, String>,
@@ -56,6 +58,7 @@ pub struct DefaultModernConnectorManager<C: ModernExchangeConnector> {
     /// 指标收集器
     metrics_collector: Option<Arc<dyn MetricsCollector>>,
     /// 管理器配置
+    #[allow(dead_code)]
     config: ManagerConfig,
 }
 
@@ -231,7 +234,7 @@ impl<C: ModernExchangeConnector> ModernConnectorManager for DefaultModernConnect
         
         info!("开始启动所有连接器，总数: {}", connector_ids.len());
         
-        let mut errors: Vec<String> = Vec::new();
+        let errors: Vec<String> = Vec::new();
         
         for id in connector_ids {
             // 由于trait限制，这里需要重新设计
@@ -257,7 +260,7 @@ impl<C: ModernExchangeConnector> ModernConnectorManager for DefaultModernConnect
         
         info!("开始停止所有连接器，总数: {}", connector_ids.len());
         
-        let mut errors: Vec<String> = Vec::new();
+        let errors: Vec<String> = Vec::new();
         
         for id in connector_ids {
             // 由于trait限制，这里需要重新设计
